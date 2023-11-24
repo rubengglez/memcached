@@ -1,7 +1,9 @@
 use std::{
     collections::HashMap,
-    io::{BufRead, BufReader, BufWriter, Read, Write},
+    io::{BufRead, BufReader, BufWriter, Write},
     net::{SocketAddr, TcpListener, TcpStream},
+    sync::{Arc, Mutex},
+    thread,
 };
 
 use crate::config::Config;
@@ -26,7 +28,7 @@ impl Item {
     }
 }
 
-type Store = HashMap<String, Item>;
+type Store = Arc<Mutex<HashMap<String, Item>>>;
 
 fn main() {
     let config = match Config::parse(std::env::args()) {
@@ -36,17 +38,23 @@ fn main() {
 
     let listener = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], config.port))).unwrap();
 
-    let mut store = HashMap::new();
+    let store = Arc::new(Mutex::new(HashMap::new()));
 
     for stream_wrapper in listener.incoming() {
         let stream = stream_wrapper.unwrap();
 
-        handle_connection(stream, &mut store);
+        let mut store: Arc<Mutex<HashMap<String, Item>>> = Arc::clone(&store);
+        thread::spawn(move || {
+            handle_connection(stream, &mut store);
+        });
     }
 }
 
 fn response_wrong_number_of_arguments(writer: &mut BufWriter<&TcpStream>, command: &str) {
-    response(writer, &format!("wrong number of arguments for {command}\r\n"));
+    response(
+        writer,
+        &format!("wrong number of arguments for {command}\r\n"),
+    );
 }
 
 fn response(writer: &mut BufWriter<&TcpStream>, response: &str) {
@@ -81,7 +89,10 @@ fn handle_connection(stream: TcpStream, store: &mut Store) {
             let mut value = String::new();
             read_buffer.read_line(&mut value).unwrap();
 
-            store.insert(key, Item::new(flags, exptime, value_size_in_bytes, value));
+            store
+                .lock()
+                .unwrap()
+                .insert(key, Item::new(flags, exptime, value_size_in_bytes, value));
 
             if no_reply == None {
                 response(&mut write_buffer, "STORED\r\n");
@@ -97,7 +108,7 @@ fn handle_connection(stream: TcpStream, store: &mut Store) {
             iterator.next();
             let key = iterator.next().unwrap();
 
-            match store.get(key) {
+            match store.lock().unwrap().get(key) {
                 None => {
                     response(&mut write_buffer, "END\r\n");
                 }
