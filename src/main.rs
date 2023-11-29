@@ -6,9 +6,10 @@ use std::{
     thread,
 };
 
-use crate::config::Config;
+use crate::config::MyConfig;
 
 mod config;
+mod errors;
 
 struct Item {
     flags: u16,
@@ -31,12 +32,14 @@ impl Item {
 type Store = Arc<Mutex<HashMap<String, Item>>>;
 
 fn main() {
-    let config = match Config::parse(std::env::args()) {
+    let config = match MyConfig::parse(std::env::args(), None) {
         Ok(c) => c,
-        Err(_) => panic!("Invalid arguments"),
+        Err(err) => panic!("Invalid arguments {:?}", err),
     };
 
     let listener = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], config.port))).unwrap();
+
+    println!("Listening on port {}", config.port);
 
     let store = Arc::new(Mutex::new(HashMap::new()));
 

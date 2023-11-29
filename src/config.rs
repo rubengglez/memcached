@@ -1,92 +1,131 @@
-// TODO: Use ENV VAR to get this value
-const DEFAULT_PORT: u16 = 11211;
+use crate::errors::*;
+use config::{Config, File};
+use serde::Deserialize;
 
-pub struct Config {
+#[derive(Debug, Deserialize)]
+#[allow(unused)]
+struct Server {
+    default_port: u16,
+}
+
+#[derive(Debug, Deserialize)]
+#[allow(unused)]
+struct Settings {
+    server: Server,
+}
+
+pub struct MyConfig {
     pub port: u16,
 }
 
-// TODO: create different errors instead of returning Err(String)
-impl Config {
+pub struct Options {
+    config_file: String,
+}
+
+impl Options {
+    fn default() -> Options {
+        Options {
+            config_file: "config/default".to_string(),
+        }
+    }
+}
+
+impl MyConfig {
     pub fn parse(
         mut args: impl Iterator<Item = String> + ExactSizeIterator,
-    ) -> Result<Config, String> {
+        opt: Option<Options>,
+    ) -> Result<MyConfig, Errors> {
+        let mut options = opt;
+        if options.is_none() {
+            options = Some(Options::default());
+        }
+
+        let s = Config::builder()
+            .add_source(File::with_name(&options.unwrap().config_file))
+            .build()?;
+
         if args.len() != 1 && args.len() != 3 {
-            return Err(String::from("Invalid number of arguments"));
+            return Err(Errors::InvalidNumberArguments(String::from(
+                "Invalid number of arguments",
+            )));
         }
 
         args.next();
 
         if args.len() == 0 {
-            return Ok(Config { port: DEFAULT_PORT });
+            return Ok(MyConfig {
+                port: s.get::<u16>("server.default_port").unwrap(),
+            });
         }
 
         let option = args.next();
 
         if option.is_none() || !String::from("-p").eq(&option.unwrap()) {
-            return Err(String::from("Invalid optional argument"));
+            return Err(Errors::InvalidOptionalArguments(String::from(
+                "Invalid optional argument",
+            )));
         }
 
         let port: u16 = match args.next().unwrap().parse() {
             Err(_) => {
-                return Err(String::from(
+                return Err(Errors::InvalidGivenPort(String::from(
                     "Value given is not a valid port. Provide a integer",
-                ))
+                )))
             }
             Ok(p) => p,
         };
 
-        Ok(Config { port })
+        Ok(MyConfig { port })
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::error::Error;
 
-    fn should_fail(
-        args: impl Iterator<Item = String> + ExactSizeIterator,
-        message_when_not_fails: &str,
-        error_expected: &str,
-    ) -> Result<(), String> {
-        match Config::parse(args.into_iter()) {
-            Ok(_) => Err(String::from(message_when_not_fails)),
-            Err(value) => {
-                if value == error_expected {
-                    Ok(())
-                } else {
-                    Err(String::from(format!(
-                        "Expected returned error is: {} and got: {}",
-                        error_expected, value
-                    )))
-                }
-            }
-        }
-    }
+    use super::*;
 
     #[test]
     fn should_fail_when_args_is_empty() -> Result<(), String> {
         let args = vec![].into_iter();
 
-        should_fail(
-            args,
-            "Empty args are not allowed",
-            "Invalid number of arguments",
-        )
+        match MyConfig::parse(args.into_iter(), None) {
+            Ok(_) => Err(String::from("Empty args are not allowed")),
+            Err(value) => match value {
+                Errors::InvalidNumberArguments(_) => Ok(()),
+                _ => Err(String::from("empty args are not allowed")),
+            },
+        }
     }
 
     #[test]
-    fn should_use_default_when_optional_port_is_not_given() -> Result<(), String> {
+    fn should_use_default_when_optional_port_is_not_given() -> Result<(), Box<dyn Error>> {
         let args = ["myProgram"].iter().map(|s| s.to_string());
+        let s = Config::builder()
+            .add_source(File::with_name("config/test"))
+            .build()?;
+        let options = Some(Options {
+            config_file: "config/test".to_string(),
+        });
 
-        match Config::parse(args.into_iter()) {
+        match MyConfig::parse(args.into_iter(), options) {
             Ok(config) => {
-                if config.port == DEFAULT_PORT {
+                if config.port == s.get::<u16>("server.default_port").unwrap() {
                     Ok(())
                 } else {
-                    Err(String::from(format!("Expected port {}", DEFAULT_PORT)))
+                    Err(String::from(format!(
+                        "Expected port {}, got {}",
+                        s.get::<u16>("server.default_port").unwrap(),
+                        config.port
+                    ))
+                    .into())
                 }
             }
-            Err(_) => Err(String::from(format!("Expected port {}", DEFAULT_PORT))),
+            Err(_) => Err(String::from(format!(
+                "Expected port {}",
+                s.get::<u16>("server.default_port").unwrap()
+            ))
+            .into()),
         }
     }
 
@@ -94,22 +133,26 @@ mod tests {
     fn should_fail_when_optional_param_is_given_but_not_value() -> Result<(), String> {
         let args = ["myProgram", "-p"].iter().map(|s| s.to_string());
 
-        should_fail(
-            args,
-            "Config should not be created",
-            "Invalid number of arguments",
-        )
+        match MyConfig::parse(args.into_iter(), None) {
+            Ok(_) => Err(String::from("Empty args are not allowed")),
+            Err(value) => match value {
+                Errors::InvalidNumberArguments(_) => Ok(()),
+                _ => Err(String::from("Invalid number of arguments")),
+            },
+        }
     }
 
     #[test]
     fn should_fail_when_optional_param_is_different_than_expected() -> Result<(), String> {
         let args = ["myProgram", "-lolo", "1234"].iter().map(|s| s.to_string());
 
-        should_fail(
-            args,
-            "Config should not be created",
-            "Invalid optional argument",
-        )
+        match MyConfig::parse(args.into_iter(), None) {
+            Ok(_) => Err(String::from("Empty args are not allowed")),
+            Err(value) => match value {
+                Errors::InvalidOptionalArguments(_) => Ok(()),
+                _ => Err(String::from("Config should not be created")),
+            },
+        }
     }
 
     #[test]
@@ -117,10 +160,12 @@ mod tests {
     ) -> Result<(), String> {
         let args = ["myProgram", "-p", "abcd"].iter().map(|s| s.to_string());
 
-        should_fail(
-            args,
-            "Config should not be created",
-            "Value given is not a valid port. Provide a integer",
-        )
+        match MyConfig::parse(args.into_iter(), None) {
+            Ok(_) => Err(String::from("Empty args are not allowed")),
+            Err(value) => match value {
+                Errors::InvalidGivenPort(_) => Ok(()),
+                _ => Err(String::from("Should provide a valid port")),
+            },
+        }
     }
 }
