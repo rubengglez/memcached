@@ -71,18 +71,18 @@ fn handle_connection(stream: TcpStream, store: &mut Store) {
         let mut write_buffer = BufWriter::new(&stream);
 
         let mut command = String::new();
+        // TODO: blocking call. Limit number of bytes taken
         read_buffer.read_line(&mut command).unwrap();
+        let mut iterator = command.split_whitespace();
+        let size = iterator.clone().count();
+        iterator.next();
+        let key = iterator.next().unwrap();
         if command.starts_with("set") {
-            let mut iterator = command.split_whitespace();
-            // TODO: is there a better way without cloning the iterator
-            let size = iterator.clone().count();
             if size != 5 && size != 6 {
                 response_wrong_number_of_arguments(&mut write_buffer, "set");
                 continue;
             }
 
-            iterator.next();
-            let key = String::from(iterator.next().unwrap());
             let flags: u16 = iterator.next().unwrap().parse().unwrap();
             let exptime: usize = iterator.next().unwrap().parse().unwrap();
             let value_size_in_bytes: usize = iterator.next().unwrap().parse().unwrap();
@@ -95,21 +95,16 @@ fn handle_connection(stream: TcpStream, store: &mut Store) {
             store
                 .lock()
                 .unwrap()
-                .insert(key, Item::new(flags, exptime, value_size_in_bytes, value));
+                .insert(key.to_string(), Item::new(flags, exptime, value_size_in_bytes, value));
 
             if no_reply == None {
                 response(&mut write_buffer, "STORED\r\n");
             }
         } else {
-            let mut iterator = command.split_whitespace();
-            // TODO: is there a better way without cloning the iterator
-            let size = iterator.clone().count();
             if size != 2 {
                 response_wrong_number_of_arguments(&mut write_buffer, "set");
                 continue;
             }
-            iterator.next();
-            let key = iterator.next().unwrap();
 
             match store.lock().unwrap().get(key) {
                 None => {
