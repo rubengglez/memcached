@@ -1,9 +1,12 @@
+use chrono::prelude::*;
 use std::{
     collections::HashMap,
     io::{BufRead, BufReader, BufWriter, Write},
     net::{SocketAddr, TcpListener, TcpStream},
+    ops::{Add, Sub},
     sync::{Arc, Mutex},
     thread,
+    time::Duration,
 };
 
 use crate::config::MyConfig;
@@ -13,19 +16,39 @@ mod errors;
 
 struct Item {
     flags: u16,
-    exptime: usize,
+    exptime: i64,
     value: String,
     value_length: usize,
 }
 
 impl Item {
-    fn new(flags: u16, exptime: usize, value_length: usize, value: String) -> Self {
+    fn new(flags: u16, exptime: isize, value_length: usize, value: String) -> Self {
+        let mut will_expire_on = Utc::now();
+
+        if exptime < 0 {
+            will_expire_on = will_expire_on.sub(Duration::new(1, 0));
+        } else {
+            will_expire_on = will_expire_on.add(Duration::new(exptime as u64, 0));
+        }
+
+        println!("que es now: {}", Utc::now().timestamp());
+        println!("que es will_expire_on: {}", will_expire_on);
+
         Item {
             flags,
-            exptime,
+            exptime: will_expire_on.timestamp(),
             value_length,
             value,
         }
+    }
+
+    fn expired(&self) -> bool {
+        let now = Utc::now().timestamp();
+
+        println!("que es now: {}", now);
+        println!("que es exptime: {}", self.exptime);
+
+        self.exptime < now
     }
 }
 
@@ -84,7 +107,7 @@ fn handle_connection(stream: TcpStream, store: &mut Store) {
             }
 
             let flags: u16 = iterator.next().unwrap().parse().unwrap();
-            let exptime: usize = iterator.next().unwrap().parse().unwrap();
+            let exptime: isize = iterator.next().unwrap().parse().unwrap();
             let value_size_in_bytes: usize = iterator.next().unwrap().parse().unwrap();
             let no_reply = iterator.next();
 
@@ -92,17 +115,17 @@ fn handle_connection(stream: TcpStream, store: &mut Store) {
             let mut value = String::new();
             read_buffer.read_line(&mut value).unwrap();
 
-            store
-                .lock()
-                .unwrap()
-                .insert(key.to_string(), Item::new(flags, exptime, value_size_in_bytes, value));
+            store.lock().unwrap().insert(
+                key.to_string(),
+                Item::new(flags, exptime, value_size_in_bytes, value),
+            );
 
             if no_reply == None {
                 response(&mut write_buffer, "STORED\r\n");
             }
         } else {
             if size != 2 {
-                response_wrong_number_of_arguments(&mut write_buffer, "set");
+                response_wrong_number_of_arguments(&mut write_buffer, "get");
                 continue;
             }
 
@@ -111,6 +134,10 @@ fn handle_connection(stream: TcpStream, store: &mut Store) {
                     response(&mut write_buffer, "END\r\n");
                 }
                 Some(item) => {
+                    if item.expired() {
+                        response(&mut write_buffer, "END\r\n");
+                        continue;
+                    }
                     let mut message =
                         format!("VALUE {} {} {}\r\n", key, item.flags, item.value_length);
                     message += &item.value;
