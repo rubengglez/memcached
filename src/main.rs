@@ -14,6 +14,7 @@ use crate::config::MyConfig;
 mod config;
 mod errors;
 
+#[derive(Debug)]
 struct Item {
     flags: u16,
     exptime: i64,
@@ -31,9 +32,6 @@ impl Item {
             will_expire_on = will_expire_on.add(Duration::new(exptime as u64, 0));
         }
 
-        println!("que es now: {}", Utc::now().timestamp());
-        println!("que es will_expire_on: {}", will_expire_on);
-
         Item {
             flags,
             exptime: will_expire_on.timestamp(),
@@ -44,9 +42,6 @@ impl Item {
 
     fn expired(&self) -> bool {
         let now = Utc::now().timestamp();
-
-        println!("que es now: {}", now);
-        println!("que es exptime: {}", self.exptime);
 
         self.exptime < now
     }
@@ -96,6 +91,7 @@ fn handle_connection(stream: TcpStream, store: &mut Store) {
         let mut command = String::new();
         // TODO: blocking call. Limit number of bytes taken
         read_buffer.read_line(&mut command).unwrap();
+
         let mut iterator = command.split_whitespace();
         let size = iterator.clone().count();
         iterator.next();
@@ -123,7 +119,7 @@ fn handle_connection(stream: TcpStream, store: &mut Store) {
             if no_reply == None {
                 response(&mut write_buffer, "STORED\r\n");
             }
-        } else {
+        } else if command.starts_with("get") {
             if size != 2 {
                 response_wrong_number_of_arguments(&mut write_buffer, "get");
                 continue;
@@ -146,6 +142,74 @@ fn handle_connection(stream: TcpStream, store: &mut Store) {
                     response(&mut write_buffer, &message);
                 }
             }
+        } else if command.starts_with("add") {
+            if size != 5 && size != 6 {
+                response_wrong_number_of_arguments(&mut write_buffer, "add");
+                continue;
+            }
+
+            let flags: u16 = iterator.next().unwrap().parse().unwrap();
+            let exptime: isize = iterator.next().unwrap().parse().unwrap();
+            let value_size_in_bytes: usize = iterator.next().unwrap().parse().unwrap();
+            let no_reply = iterator.next();
+
+            // TODO: validate size of payload with the value_size_in_bytes
+            let mut value = String::new();
+            read_buffer.read_line(&mut value).unwrap();
+
+            let mut unlocked_store = store.lock().unwrap();
+
+            match unlocked_store.get(key) {
+                None => {
+                    unlocked_store.insert(
+                        key.to_string(),
+                        Item::new(flags, exptime, value_size_in_bytes, value),
+                    );
+
+                    if no_reply == None {
+                        response(&mut write_buffer, "STORED\r\n");
+                    }
+                }
+                Some(_) => {
+                    response(&mut write_buffer, "NOT_STORED\r\n");
+                }
+            }
+        } else if command.starts_with("replace") {
+            if size != 5 && size != 6 {
+                response_wrong_number_of_arguments(&mut write_buffer, "replace");
+                continue;
+            }
+
+            let flags: u16 = iterator.next().unwrap().parse().unwrap();
+            let exptime: isize = iterator.next().unwrap().parse().unwrap();
+            let value_size_in_bytes: usize = iterator.next().unwrap().parse().unwrap();
+            let no_reply = iterator.next();
+
+            // TODO: validate size of payload with the value_size_in_bytes
+            let mut value = String::new();
+            read_buffer.read_line(&mut value).unwrap();
+
+            let mut unlocked_store = store.lock().unwrap();
+
+            match unlocked_store.get(key) {
+                None => {
+                    response(&mut write_buffer, "NOT_STORED\r\n");
+                    continue;
+                }
+                Some(_) => {
+                    unlocked_store.insert(
+                        key.to_string(),
+                        Item::new(flags, exptime, value_size_in_bytes, value),
+                    );
+
+                    if no_reply == None {
+                        response(&mut write_buffer, "STORED\r\n");
+                    }
+                }
+            }
+        } else {
+            response(&mut write_buffer, "wrong command");
+            continue;
         }
     }
 }
