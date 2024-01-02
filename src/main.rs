@@ -6,10 +6,12 @@ use std::{
     thread,
 };
 
+use commands::SetData;
 use types::Store;
 
-use crate::{config::MyConfig, item::Item};
+use crate::{commands::Commands, config::MyConfig, item::Item};
 
+mod commands;
 mod config;
 mod errors;
 mod item;
@@ -50,6 +52,7 @@ fn response(writer: &mut BufWriter<&TcpStream>, response: &str) {
 }
 
 fn handle_connection(stream: TcpStream, store: &mut Store) {
+    let mut commands = Commands::new(store.clone());
     loop {
         let mut read_buffer = BufReader::new(&stream);
         let mut write_buffer = BufWriter::new(&stream);
@@ -77,13 +80,16 @@ fn handle_connection(stream: TcpStream, store: &mut Store) {
             let mut value = String::new();
             read_buffer.read_line(&mut value).unwrap();
 
-            store.lock().unwrap().insert(
-                key.to_string(),
-                Item::new(flags, exptime, value_size_in_bytes, value),
-            );
+            let result = commands.set(SetData {
+                key: key.to_string(),
+                value,
+                flags,
+                exptime,
+                value_size_in_bytes,
+            });
 
             if no_reply == None {
-                response(&mut write_buffer, "STORED\r\n");
+                response(&mut write_buffer, &result);
             }
         } else if command.starts_with("get") {
             if size != 2 {
