@@ -1,53 +1,19 @@
-use chrono::prelude::*;
 use std::{
     collections::HashMap,
     io::{BufRead, BufReader, BufWriter, Write},
     net::{SocketAddr, TcpListener, TcpStream},
-    ops::{Add, Sub},
     sync::{Arc, Mutex},
     thread,
-    time::Duration,
 };
 
-use crate::config::MyConfig;
+use types::Store;
+
+use crate::{config::MyConfig, item::Item};
 
 mod config;
 mod errors;
-
-#[derive(Debug)]
-struct Item {
-    flags: u16,
-    exptime: i64,
-    value: String,
-    value_length: usize,
-}
-
-impl Item {
-    fn new(flags: u16, exptime: isize, value_length: usize, value: String) -> Self {
-        let mut will_expire_on = Utc::now();
-
-        if exptime < 0 {
-            will_expire_on = will_expire_on.sub(Duration::new(1, 0));
-        } else {
-            will_expire_on = will_expire_on.add(Duration::new(exptime as u64, 0));
-        }
-
-        Item {
-            flags,
-            exptime: will_expire_on.timestamp(),
-            value_length,
-            value,
-        }
-    }
-
-    fn expired(&self) -> bool {
-        let now = Utc::now().timestamp();
-
-        self.exptime < now
-    }
-}
-
-type Store = Arc<Mutex<HashMap<String, Item>>>;
+mod item;
+mod types;
 
 fn main() {
     let config = match MyConfig::parse(std::env::args(), None) {
