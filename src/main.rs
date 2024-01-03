@@ -32,9 +32,9 @@ fn main() {
     for stream_wrapper in listener.incoming() {
         let stream = stream_wrapper.unwrap();
 
-        let mut store: Arc<Mutex<HashMap<String, Item>>> = Arc::clone(&store);
+        let store = Arc::clone(&store);
         thread::spawn(move || {
-            handle_connection(stream, &mut store);
+            handle_connection(stream, store);
         });
     }
 }
@@ -51,8 +51,8 @@ fn response(writer: &mut BufWriter<&TcpStream>, response: &str) {
     writer.flush().unwrap();
 }
 
-fn handle_connection(stream: TcpStream, store: &mut Store) {
-    let mut commands = Commands::new(store.clone());
+fn handle_connection(stream: TcpStream, store: Store) {
+    let mut commands = Commands::new(store);
     loop {
         let mut read_buffer = BufReader::new(&stream);
         let mut write_buffer = BufWriter::new(&stream);
