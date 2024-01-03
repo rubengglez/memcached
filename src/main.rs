@@ -6,7 +6,7 @@ use std::{
     thread,
 };
 
-use commands::SetData;
+use commands::CommandDto;
 use types::Store;
 
 use crate::{commands::Commands, config::MyConfig, item::Item};
@@ -80,7 +80,7 @@ fn handle_connection(stream: TcpStream, store: &mut Store) {
             let mut value = String::new();
             read_buffer.read_line(&mut value).unwrap();
 
-            let result = commands.set(SetData {
+            let result = commands.set(CommandDto {
                 key: key.to_string(),
                 value,
                 flags,
@@ -97,23 +97,8 @@ fn handle_connection(stream: TcpStream, store: &mut Store) {
                 continue;
             }
 
-            match store.lock().unwrap().get(key) {
-                None => {
-                    response(&mut write_buffer, "END\r\n");
-                }
-                Some(item) => {
-                    if item.expired() {
-                        response(&mut write_buffer, "END\r\n");
-                        continue;
-                    }
-                    let mut message =
-                        format!("VALUE {} {} {}\r\n", key, item.flags, item.value_length);
-                    message += &item.value;
-                    message += "END\r\n";
-
-                    response(&mut write_buffer, &message);
-                }
-            }
+            let result = commands.get(key);
+            response(&mut write_buffer, &result);
         } else if command.starts_with("add") {
             if size != 5 && size != 6 {
                 response_wrong_number_of_arguments(&mut write_buffer, "add");
@@ -129,22 +114,15 @@ fn handle_connection(stream: TcpStream, store: &mut Store) {
             let mut value = String::new();
             read_buffer.read_line(&mut value).unwrap();
 
-            let mut unlocked_store = store.lock().unwrap();
-
-            match unlocked_store.get(key) {
-                None => {
-                    unlocked_store.insert(
-                        key.to_string(),
-                        Item::new(flags, exptime, value_size_in_bytes, value),
-                    );
-
-                    if no_reply == None {
-                        response(&mut write_buffer, "STORED\r\n");
-                    }
-                }
-                Some(_) => {
-                    response(&mut write_buffer, "NOT_STORED\r\n");
-                }
+            let result = commands.add(CommandDto {
+                key: key.to_string(),
+                value,
+                flags,
+                exptime,
+                value_size_in_bytes,
+            });
+            if no_reply == None {
+                response(&mut write_buffer, &result);
             }
         } else if command.starts_with("replace") {
             if size != 5 && size != 6 {
@@ -161,23 +139,15 @@ fn handle_connection(stream: TcpStream, store: &mut Store) {
             let mut value = String::new();
             read_buffer.read_line(&mut value).unwrap();
 
-            let mut unlocked_store = store.lock().unwrap();
-
-            match unlocked_store.get(key) {
-                None => {
-                    response(&mut write_buffer, "NOT_STORED\r\n");
-                    continue;
-                }
-                Some(_) => {
-                    unlocked_store.insert(
-                        key.to_string(),
-                        Item::new(flags, exptime, value_size_in_bytes, value),
-                    );
-
-                    if no_reply == None {
-                        response(&mut write_buffer, "STORED\r\n");
-                    }
-                }
+            let result = commands.replace(CommandDto {
+                key: key.to_string(),
+                value,
+                flags,
+                exptime,
+                value_size_in_bytes,
+            });
+            if no_reply == None {
+                response(&mut write_buffer, &result);
             }
         } else if command.starts_with("append") {
             if size != 5 && size != 6 {
@@ -185,33 +155,24 @@ fn handle_connection(stream: TcpStream, store: &mut Store) {
                 continue;
             }
 
-            iterator.next();
-            iterator.next();
-            // TODO: assert that expected data contains this length size
-            let _: usize = iterator.next().unwrap().parse().unwrap();
+            let flags: u16 = iterator.next().unwrap().parse().unwrap();
+            let exptime: isize = iterator.next().unwrap().parse().unwrap();
+            let value_size_in_bytes: usize = iterator.next().unwrap().parse().unwrap();
             let no_reply = iterator.next();
 
             // TODO: validate size of payload with the value_size_in_bytes
             let mut value = String::new();
             read_buffer.read_line(&mut value).unwrap();
 
-            let mut unlocked_store = store.lock().unwrap();
-
-            match unlocked_store.get(key) {
-                None => {
-                    response(&mut write_buffer, "NOT_STORED\r\n");
-                    continue;
-                }
-                Some(_) => {
-                    unlocked_store.entry(key.to_string()).and_modify(|val| {
-                        val.value = String::from(val.value.to_owned() + value.trim_end());
-                        val.value_length = val.value.bytes().count();
-                    });
-
-                    if no_reply == None {
-                        response(&mut write_buffer, "STORED\r\n");
-                    }
-                }
+            let result = commands.append(CommandDto {
+                key: key.to_string(),
+                value,
+                flags,
+                exptime,
+                value_size_in_bytes,
+            });
+            if no_reply == None {
+                response(&mut write_buffer, &result);
             }
         } else if command.starts_with("prepend") {
             if size != 5 && size != 6 {
@@ -219,33 +180,24 @@ fn handle_connection(stream: TcpStream, store: &mut Store) {
                 continue;
             }
 
-            iterator.next();
-            iterator.next();
-            // TODO: assert that expected data contains this length size
-            let _: usize = iterator.next().unwrap().parse().unwrap();
+            let flags: u16 = iterator.next().unwrap().parse().unwrap();
+            let exptime: isize = iterator.next().unwrap().parse().unwrap();
+            let value_size_in_bytes: usize = iterator.next().unwrap().parse().unwrap();
             let no_reply = iterator.next();
 
             // TODO: validate size of payload with the value_size_in_bytes
             let mut value = String::new();
             read_buffer.read_line(&mut value).unwrap();
 
-            let mut unlocked_store = store.lock().unwrap();
-
-            match unlocked_store.get(key) {
-                None => {
-                    response(&mut write_buffer, "NOT_STORED\r\n");
-                    continue;
-                }
-                Some(_) => {
-                    unlocked_store.entry(key.to_string()).and_modify(|val| {
-                        val.value = String::from(value.trim_end().to_owned() + &val.value);
-                        val.value_length = val.value.bytes().count();
-                    });
-
-                    if no_reply == None {
-                        response(&mut write_buffer, "STORED\r\n");
-                    }
-                }
+            let result = commands.prepend(CommandDto {
+                key: key.to_string(),
+                value,
+                flags,
+                exptime,
+                value_size_in_bytes,
+            });
+            if no_reply == None {
+                response(&mut write_buffer, &result);
             }
         } else {
             response(&mut write_buffer, "wrong command");
