@@ -1,15 +1,16 @@
+use bytes::BytesMut;
 use std::{
     collections::HashMap,
-    io::{BufRead, BufReader, BufWriter, Write},
-    net::{SocketAddr, TcpListener, TcpStream},
+    net::SocketAddr,
     sync::{Arc, Mutex},
-    thread,
 };
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::{TcpListener, TcpStream};
 
 use commands::CommandDto;
 use types::Store;
 
-use crate::{commands::Commands, config::MyConfig, item::Item};
+use crate::{commands::Commands, config::MyConfig};
 
 mod commands;
 mod config;
@@ -17,49 +18,50 @@ mod errors;
 mod item;
 mod types;
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let config = match MyConfig::parse(std::env::args(), None) {
         Ok(c) => c,
         Err(err) => panic!("Invalid arguments {:?}", err),
     };
 
-    let listener = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], config.port))).unwrap();
+    let listener = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], config.port)))
+        .await
+        .unwrap();
 
     println!("Listening on port {}", config.port);
 
     let store = Arc::new(Mutex::new(HashMap::new()));
 
-    for stream_wrapper in listener.incoming() {
-        let stream = stream_wrapper.unwrap();
+    loop {
+        // The second item contains the IP and port of the new connection.
+        let (mut socket, _) = listener.accept().await.unwrap();
+        let store = store.clone();
 
-        let store = Arc::clone(&store);
-        thread::spawn(move || {
-            handle_connection(stream, store);
+        tokio::spawn(async move {
+            handle_connection(&mut socket, store).await;
         });
     }
 }
 
-fn response_wrong_number_of_arguments(writer: &mut BufWriter<&TcpStream>, command: &str) {
+async fn response_wrong_number_of_arguments(writer: &mut TcpStream, command: &str) {
     response(
         writer,
         &format!("wrong number of arguments for {command}\r\n"),
-    );
+    ).await;
 }
 
-fn response(writer: &mut BufWriter<&TcpStream>, response: &str) {
-    writer.write_all(response.as_bytes()).unwrap();
-    writer.flush().unwrap();
+async fn response(writer: &mut TcpStream, response: &str) {
+    writer.write_all(response.as_bytes()).await.unwrap();
+    writer.flush().await.unwrap();
 }
 
-fn handle_connection(stream: TcpStream, store: Store) {
+async fn handle_connection(stream: &mut TcpStream, store: Store) {
     let mut commands = Commands::new(store);
     loop {
-        let mut read_buffer = BufReader::new(&stream);
-        let mut write_buffer = BufWriter::new(&stream);
-
-        let mut command = String::new();
-        // TODO: blocking call. Limit number of bytes taken
-        read_buffer.read_line(&mut command).unwrap();
+        let mut buf = BytesMut::with_capacity(1024);
+        stream.read_buf(&mut buf).await.unwrap();
+        let command = String::from_utf8(buf.to_vec()).unwrap();
 
         let mut iterator = command.split_whitespace();
         let size = iterator.clone().count();
@@ -67,7 +69,7 @@ fn handle_connection(stream: TcpStream, store: Store) {
         let key = iterator.next().unwrap();
         if command.starts_with("set") {
             if size != 5 && size != 6 {
-                response_wrong_number_of_arguments(&mut write_buffer, "set");
+                response_wrong_number_of_arguments(stream, "set").await;
                 continue;
             }
 
@@ -76,9 +78,10 @@ fn handle_connection(stream: TcpStream, store: Store) {
             let value_size_in_bytes: usize = iterator.next().unwrap().parse().unwrap();
             let no_reply = iterator.next();
 
+            buf.clear();
+            stream.read_buf(&mut buf).await.unwrap();
             // TODO: validate size of payload with the value_size_in_bytes
-            let mut value = String::new();
-            read_buffer.read_line(&mut value).unwrap();
+            let value = String::from_utf8(buf.to_vec()).unwrap();
 
             let result = commands.set(CommandDto {
                 key: key.to_string(),
@@ -89,19 +92,19 @@ fn handle_connection(stream: TcpStream, store: Store) {
             });
 
             if no_reply == None {
-                response(&mut write_buffer, &result);
+                response(stream, &result).await;
             }
         } else if command.starts_with("get") {
             if size != 2 {
-                response_wrong_number_of_arguments(&mut write_buffer, "get");
+                response_wrong_number_of_arguments(stream, "get").await;
                 continue;
             }
 
             let result = commands.get(key);
-            response(&mut write_buffer, &result);
+            response(stream, &result).await;
         } else if command.starts_with("add") {
             if size != 5 && size != 6 {
-                response_wrong_number_of_arguments(&mut write_buffer, "add");
+                response_wrong_number_of_arguments(stream, "add").await;
                 continue;
             }
 
@@ -110,9 +113,10 @@ fn handle_connection(stream: TcpStream, store: Store) {
             let value_size_in_bytes: usize = iterator.next().unwrap().parse().unwrap();
             let no_reply = iterator.next();
 
+            buf.clear();
+            stream.read_buf(&mut buf).await.unwrap();
             // TODO: validate size of payload with the value_size_in_bytes
-            let mut value = String::new();
-            read_buffer.read_line(&mut value).unwrap();
+            let value = String::from_utf8(buf.to_vec()).unwrap();
 
             let result = commands.add(CommandDto {
                 key: key.to_string(),
@@ -122,11 +126,11 @@ fn handle_connection(stream: TcpStream, store: Store) {
                 value_size_in_bytes,
             });
             if no_reply == None {
-                response(&mut write_buffer, &result);
+                response(stream, &result).await;
             }
         } else if command.starts_with("replace") {
             if size != 5 && size != 6 {
-                response_wrong_number_of_arguments(&mut write_buffer, "replace");
+                response_wrong_number_of_arguments(stream, "replace").await;
                 continue;
             }
 
@@ -135,9 +139,10 @@ fn handle_connection(stream: TcpStream, store: Store) {
             let value_size_in_bytes: usize = iterator.next().unwrap().parse().unwrap();
             let no_reply = iterator.next();
 
+            buf.clear();
+            stream.read_buf(&mut buf).await.unwrap();
             // TODO: validate size of payload with the value_size_in_bytes
-            let mut value = String::new();
-            read_buffer.read_line(&mut value).unwrap();
+            let value = String::from_utf8(buf.to_vec()).unwrap();
 
             let result = commands.replace(CommandDto {
                 key: key.to_string(),
@@ -147,11 +152,11 @@ fn handle_connection(stream: TcpStream, store: Store) {
                 value_size_in_bytes,
             });
             if no_reply == None {
-                response(&mut write_buffer, &result);
+                response(stream, &result).await;
             }
         } else if command.starts_with("append") {
             if size != 5 && size != 6 {
-                response_wrong_number_of_arguments(&mut write_buffer, "append");
+                response_wrong_number_of_arguments(stream, "append").await;
                 continue;
             }
 
@@ -160,9 +165,10 @@ fn handle_connection(stream: TcpStream, store: Store) {
             let value_size_in_bytes: usize = iterator.next().unwrap().parse().unwrap();
             let no_reply = iterator.next();
 
+            buf.clear();
+            stream.read_buf(&mut buf).await.unwrap();
             // TODO: validate size of payload with the value_size_in_bytes
-            let mut value = String::new();
-            read_buffer.read_line(&mut value).unwrap();
+            let value = String::from_utf8(buf.to_vec()).unwrap();
 
             let result = commands.append(CommandDto {
                 key: key.to_string(),
@@ -172,11 +178,11 @@ fn handle_connection(stream: TcpStream, store: Store) {
                 value_size_in_bytes,
             });
             if no_reply == None {
-                response(&mut write_buffer, &result);
+                response(stream, &result).await;
             }
         } else if command.starts_with("prepend") {
             if size != 5 && size != 6 {
-                response_wrong_number_of_arguments(&mut write_buffer, "prepend");
+                response_wrong_number_of_arguments(stream, "prepend").await;
                 continue;
             }
 
@@ -185,9 +191,10 @@ fn handle_connection(stream: TcpStream, store: Store) {
             let value_size_in_bytes: usize = iterator.next().unwrap().parse().unwrap();
             let no_reply = iterator.next();
 
+            buf.clear();
+            stream.read_buf(&mut buf).await.unwrap();
             // TODO: validate size of payload with the value_size_in_bytes
-            let mut value = String::new();
-            read_buffer.read_line(&mut value).unwrap();
+            let value = String::from_utf8(buf.to_vec()).unwrap();
 
             let result = commands.prepend(CommandDto {
                 key: key.to_string(),
@@ -197,10 +204,10 @@ fn handle_connection(stream: TcpStream, store: Store) {
                 value_size_in_bytes,
             });
             if no_reply == None {
-                response(&mut write_buffer, &result);
+                response(stream, &result).await;
             }
         } else {
-            response(&mut write_buffer, "wrong command");
+            response(stream, "wrong command").await;
             continue;
         }
     }
