@@ -8,6 +8,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
 use commands::CommandDto;
+use tracing_subscriber;
 use types::Store;
 
 use crate::{commands::Commands, config::MyConfig};
@@ -20,6 +21,10 @@ mod types;
 
 #[tokio::main]
 async fn main() {
+    tracing_subscriber::fmt()
+        .with_writer(std::io::stderr)
+        .init();
+
     let config = match MyConfig::parse(std::env::args(), None) {
         Ok(c) => c,
         Err(err) => panic!("Invalid arguments {:?}", err),
@@ -29,7 +34,7 @@ async fn main() {
         .await
         .unwrap();
 
-    println!("Listening on port {}", config.port);
+    tracing::info!("Listening on port {}", config.port);
 
     let store = Arc::new(Mutex::new(HashMap::new()));
 
@@ -48,7 +53,8 @@ async fn response_wrong_number_of_arguments(writer: &mut TcpStream, command: &st
     response(
         writer,
         &format!("wrong number of arguments for {command}\r\n"),
-    ).await;
+    )
+    .await;
 }
 
 async fn response(writer: &mut TcpStream, response: &str) {
@@ -69,6 +75,7 @@ async fn handle_connection(stream: &mut TcpStream, store: Store) {
         let key = iterator.next().unwrap();
         if command.starts_with("set") {
             if size != 5 && size != 6 {
+                tracing::info!("Wrong number of arguments for {}", "set");
                 response_wrong_number_of_arguments(stream, "set").await;
                 continue;
             }
@@ -90,6 +97,7 @@ async fn handle_connection(stream: &mut TcpStream, store: Store) {
                 exptime,
                 value_size_in_bytes,
             });
+            tracing::info!("set result: {:?}", result);
 
             if no_reply == None {
                 response(stream, &result).await;
@@ -101,9 +109,11 @@ async fn handle_connection(stream: &mut TcpStream, store: Store) {
             }
 
             let result = commands.get(key);
+            tracing::info!("get result: {:?}", result);
             response(stream, &result).await;
         } else if command.starts_with("add") {
             if size != 5 && size != 6 {
+                tracing::info!("Wrong number of arguments for {}", "add");
                 response_wrong_number_of_arguments(stream, "add").await;
                 continue;
             }
@@ -125,11 +135,13 @@ async fn handle_connection(stream: &mut TcpStream, store: Store) {
                 exptime,
                 value_size_in_bytes,
             });
+            tracing::info!("add result: {:?}", result);
             if no_reply == None {
                 response(stream, &result).await;
             }
         } else if command.starts_with("replace") {
             if size != 5 && size != 6 {
+                tracing::info!("Wrong number of arguments for {}", "replace");
                 response_wrong_number_of_arguments(stream, "replace").await;
                 continue;
             }
@@ -151,11 +163,13 @@ async fn handle_connection(stream: &mut TcpStream, store: Store) {
                 exptime,
                 value_size_in_bytes,
             });
+            tracing::info!("replace result: {:?}", result);
             if no_reply == None {
                 response(stream, &result).await;
             }
         } else if command.starts_with("append") {
             if size != 5 && size != 6 {
+                tracing::info!("Wrong number of arguments for {}", "append");
                 response_wrong_number_of_arguments(stream, "append").await;
                 continue;
             }
@@ -177,11 +191,13 @@ async fn handle_connection(stream: &mut TcpStream, store: Store) {
                 exptime,
                 value_size_in_bytes,
             });
+            tracing::info!("append result: {:?}", result);
             if no_reply == None {
                 response(stream, &result).await;
             }
         } else if command.starts_with("prepend") {
             if size != 5 && size != 6 {
+                tracing::info!("Wrong number of arguments for {}", "prepend");
                 response_wrong_number_of_arguments(stream, "prepend").await;
                 continue;
             }
@@ -203,10 +219,12 @@ async fn handle_connection(stream: &mut TcpStream, store: Store) {
                 exptime,
                 value_size_in_bytes,
             });
+            tracing::info!("prepend result: {:?}", result);
             if no_reply == None {
                 response(stream, &result).await;
             }
         } else {
+            tracing::warn!("Wrong command: {}", command);
             response(stream, "wrong command").await;
             continue;
         }
