@@ -18,6 +18,7 @@ mod config;
 mod errors;
 mod item;
 mod types;
+mod protocol_parser;
 
 #[tokio::main]
 async fn main() {
