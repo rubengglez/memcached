@@ -1,4 +1,12 @@
+mod commands;
+mod config;
+mod errors;
+mod item;
+mod protocol_parser;
+mod types;
+
 use bytes::BytesMut;
+use protocol_parser::CommandParserInputData;
 use std::{
     collections::HashMap,
     net::SocketAddr,
@@ -12,13 +20,6 @@ use tracing_subscriber;
 use types::Store;
 
 use crate::{commands::Commands, config::MyConfig};
-
-mod commands;
-mod config;
-mod errors;
-mod item;
-mod types;
-mod protocol_parser;
 
 #[tokio::main]
 async fn main() {
@@ -70,164 +71,79 @@ async fn handle_connection(stream: &mut TcpStream, store: Store) {
         stream.read_buf(&mut buf).await.unwrap();
         let command = String::from_utf8(buf.to_vec()).unwrap();
 
-        let mut iterator = command.split_whitespace();
-        let size = iterator.clone().count();
-        iterator.next();
-        let key = iterator.next().unwrap();
-        if command.starts_with("set") {
-            if size != 5 && size != 6 {
-                tracing::info!("Wrong number of arguments for {}", "set");
-                response_wrong_number_of_arguments(stream, "set").await;
-                continue;
-            }
-
-            let flags: u16 = iterator.next().unwrap().parse().unwrap();
-            let exptime: isize = iterator.next().unwrap().parse().unwrap();
-            let value_size_in_bytes: usize = iterator.next().unwrap().parse().unwrap();
-            let no_reply = iterator.next();
-
-            buf.clear();
-            stream.read_buf(&mut buf).await.unwrap();
-            // TODO: validate size of payload with the value_size_in_bytes
-            let value = String::from_utf8(buf.to_vec()).unwrap();
-
+        let input_data = CommandParserInputData::from_string(command);
+        if input_data.is_err() {
+            // TODO: deal with different errors and return different messages
+            tracing::warn!("Wrong command");
+            response(stream, "wrong command").await;
+            continue;
+        }
+        let input_data = input_data.unwrap();
+        if input_data.command == "set" {
             let result = commands.set(CommandDto {
-                key: key.to_string(),
-                value,
-                flags,
-                exptime,
-                value_size_in_bytes,
+                key: input_data.key,
+                value: input_data.value.unwrap(),
+                flags: input_data.flags.unwrap(),
+                exptime: input_data.exptime.unwrap(),
+                value_size_in_bytes: input_data.value_size_bytes.unwrap(),
             });
             tracing::info!("set result: {:?}", result);
 
-            if no_reply == None {
+            if input_data.no_reply == Some(false) {
                 response(stream, &result).await;
             }
-        } else if command.starts_with("get") {
-            if size != 2 {
-                response_wrong_number_of_arguments(stream, "get").await;
-                continue;
-            }
-
-            let result = commands.get(key);
+        } else if input_data.command == "get" {
+            let result = commands.get(input_data.key.as_str());
             tracing::info!("get result: {:?}", result);
             response(stream, &result).await;
-        } else if command.starts_with("add") {
-            if size != 5 && size != 6 {
-                tracing::info!("Wrong number of arguments for {}", "add");
-                response_wrong_number_of_arguments(stream, "add").await;
-                continue;
-            }
-
-            let flags: u16 = iterator.next().unwrap().parse().unwrap();
-            let exptime: isize = iterator.next().unwrap().parse().unwrap();
-            let value_size_in_bytes: usize = iterator.next().unwrap().parse().unwrap();
-            let no_reply = iterator.next();
-
-            buf.clear();
-            stream.read_buf(&mut buf).await.unwrap();
-            // TODO: validate size of payload with the value_size_in_bytes
-            let value = String::from_utf8(buf.to_vec()).unwrap();
-
+        } else if input_data.command == "add" {
             let result = commands.add(CommandDto {
-                key: key.to_string(),
-                value,
-                flags,
-                exptime,
-                value_size_in_bytes,
+                key: input_data.key,
+                value: input_data.value.unwrap(),
+                flags: input_data.flags.unwrap(),
+                exptime: input_data.exptime.unwrap(),
+                value_size_in_bytes: input_data.value_size_bytes.unwrap(),
             });
             tracing::info!("add result: {:?}", result);
-            if no_reply == None {
+            if input_data.no_reply == Some(false) {
                 response(stream, &result).await;
             }
-        } else if command.starts_with("replace") {
-            if size != 5 && size != 6 {
-                tracing::info!("Wrong number of arguments for {}", "replace");
-                response_wrong_number_of_arguments(stream, "replace").await;
-                continue;
-            }
-
-            let flags: u16 = iterator.next().unwrap().parse().unwrap();
-            let exptime: isize = iterator.next().unwrap().parse().unwrap();
-            let value_size_in_bytes: usize = iterator.next().unwrap().parse().unwrap();
-            let no_reply = iterator.next();
-
-            buf.clear();
-            stream.read_buf(&mut buf).await.unwrap();
-            // TODO: validate size of payload with the value_size_in_bytes
-            let value = String::from_utf8(buf.to_vec()).unwrap();
-
+        } else if input_data.command == "replace" {
             let result = commands.replace(CommandDto {
-                key: key.to_string(),
-                value,
-                flags,
-                exptime,
-                value_size_in_bytes,
+                key: input_data.key,
+                value: input_data.value.unwrap(),
+                flags: input_data.flags.unwrap(),
+                exptime: input_data.exptime.unwrap(),
+                value_size_in_bytes: input_data.value_size_bytes.unwrap(),
             });
             tracing::info!("replace result: {:?}", result);
-            if no_reply == None {
+            if input_data.no_reply == Some(false) {
                 response(stream, &result).await;
             }
-        } else if command.starts_with("append") {
-            if size != 5 && size != 6 {
-                tracing::info!("Wrong number of arguments for {}", "append");
-                response_wrong_number_of_arguments(stream, "append").await;
-                continue;
-            }
-
-            let flags: u16 = iterator.next().unwrap().parse().unwrap();
-            let exptime: isize = iterator.next().unwrap().parse().unwrap();
-            let value_size_in_bytes: usize = iterator.next().unwrap().parse().unwrap();
-            let no_reply = iterator.next();
-
-            buf.clear();
-            stream.read_buf(&mut buf).await.unwrap();
-            // TODO: validate size of payload with the value_size_in_bytes
-            let value = String::from_utf8(buf.to_vec()).unwrap();
-
+        } else if input_data.command == "append" {
             let result = commands.append(CommandDto {
-                key: key.to_string(),
-                value,
-                flags,
-                exptime,
-                value_size_in_bytes,
+                key: input_data.key,
+                value: input_data.value.unwrap(),
+                flags: input_data.flags.unwrap(),
+                exptime: input_data.exptime.unwrap(),
+                value_size_in_bytes: input_data.value_size_bytes.unwrap(),
             });
             tracing::info!("append result: {:?}", result);
-            if no_reply == None {
+            if input_data.no_reply == Some(false) {
                 response(stream, &result).await;
             }
-        } else if command.starts_with("prepend") {
-            if size != 5 && size != 6 {
-                tracing::info!("Wrong number of arguments for {}", "prepend");
-                response_wrong_number_of_arguments(stream, "prepend").await;
-                continue;
-            }
-
-            let flags: u16 = iterator.next().unwrap().parse().unwrap();
-            let exptime: isize = iterator.next().unwrap().parse().unwrap();
-            let value_size_in_bytes: usize = iterator.next().unwrap().parse().unwrap();
-            let no_reply = iterator.next();
-
-            buf.clear();
-            stream.read_buf(&mut buf).await.unwrap();
-            // TODO: validate size of payload with the value_size_in_bytes
-            let value = String::from_utf8(buf.to_vec()).unwrap();
-
+        } else if input_data.command == "prepend" {
             let result = commands.prepend(CommandDto {
-                key: key.to_string(),
-                value,
-                flags,
-                exptime,
-                value_size_in_bytes,
+                key: input_data.key,
+                value: input_data.value.unwrap(),
+                flags: input_data.flags.unwrap(),
+                exptime: input_data.exptime.unwrap(),
+                value_size_in_bytes: input_data.value_size_bytes.unwrap(),
             });
             tracing::info!("prepend result: {:?}", result);
-            if no_reply == None {
+            if input_data.no_reply == Some(false) {
                 response(stream, &result).await;
             }
-        } else {
-            tracing::warn!("Wrong command: {}", command);
-            response(stream, "wrong command").await;
-            continue;
         }
     }
 }
