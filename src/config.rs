@@ -14,8 +14,22 @@ struct Settings {
     server: Server,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct Protocol {
+    pub separator: String,
+}
+
+impl Protocol {
+    fn create(s: &Config) -> Protocol {
+        Protocol {
+            separator: s.get("protocol.separator").unwrap(),
+        }
+    }
+}
+
 pub struct MyConfig {
     pub port: u16,
+    pub protocol: Protocol,
 }
 
 pub struct Options {
@@ -44,6 +58,8 @@ impl MyConfig {
             .add_source(File::with_name(&options.unwrap().config_file))
             .build()?;
 
+        let protocol = Protocol::create(&s);
+
         if args.len() != 1 && args.len() != 3 {
             return Err(Errors::InvalidNumberArguments(String::from(
                 "Invalid number of arguments",
@@ -55,6 +71,7 @@ impl MyConfig {
         if args.len() == 0 {
             return Ok(MyConfig {
                 port: s.get::<u16>("server.default_port").unwrap(),
+                protocol,
             });
         }
 
@@ -75,7 +92,7 @@ impl MyConfig {
             Ok(p) => p,
         };
 
-        Ok(MyConfig { port })
+        Ok(MyConfig { port, protocol })
     }
 }
 
@@ -117,6 +134,37 @@ mod tests {
                         "Expected port {}, got {}",
                         s.get::<u16>("server.default_port").unwrap(),
                         config.port
+                    ))
+                    .into())
+                }
+            }
+            Err(_) => Err(String::from(format!(
+                "Expected port {}",
+                s.get::<u16>("server.default_port").unwrap()
+            ))
+            .into()),
+        }
+    }
+
+    #[test]
+    fn should_use_always_default_separator_protocol() -> Result<(), Box<dyn Error>> {
+        let args = ["myProgram"].iter().map(|s| s.to_string());
+        let s = Config::builder()
+            .add_source(File::with_name("config/test"))
+            .build()?;
+        let options = Some(Options {
+            config_file: "config/test".to_string(),
+        });
+
+        match MyConfig::parse(args.into_iter(), options) {
+            Ok(config) => {
+                if config.protocol.separator == s.get::<String>("protocol.separator").unwrap() {
+                    Ok(())
+                } else {
+                    Err(String::from(format!(
+                        "Expected separator {}, got {}",
+                        s.get::<String>("protocol.separator").unwrap(),
+                        config.protocol.separator,
                     ))
                     .into())
                 }

@@ -1,2 +1,5 @@
 [server]
 default_port = 666
+
+[protocol]
+separator = "--"

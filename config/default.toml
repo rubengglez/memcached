@@ -1,2 +1,5 @@
 [server]
 default_port = 11211
+
+[protocol]
+separator = "--"
