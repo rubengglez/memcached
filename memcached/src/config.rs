@@ -39,7 +39,7 @@ pub struct Options {
 impl Options {
     fn default() -> Options {
         Options {
-            config_file: "memcached/config/default".to_string(),
+            config_file: "config/default".to_string(),
         }
     }
 }
