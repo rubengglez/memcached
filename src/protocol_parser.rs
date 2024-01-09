@@ -1,4 +1,11 @@
-use crate::types::{READ_COMMANDS, WRITE_COMMANDS};
+use crate::{
+    config::Protocol,
+    types::{READ_COMMANDS, WRITE_COMMANDS},
+};
+
+pub struct CommandParserInputDataBuilder {
+    protocol: Protocol,
+}
 
 pub struct CommandParserInputData {
     pub command: String,
@@ -10,16 +17,16 @@ pub struct CommandParserInputData {
     pub no_reply: Option<bool>,
 }
 
-impl CommandParserInputData {
-    pub fn from_string(data: String) -> Result<CommandParserInputData, String> {
-        let command_and_data_list: Vec<&str> = data.split_terminator("\\r\\n").collect();
+impl CommandParserInputDataBuilder {
+    pub fn new(protocol: Protocol) -> CommandParserInputDataBuilder {
+        CommandParserInputDataBuilder { protocol }
+    }
+
+    pub fn build(&self, data: String) -> Result<CommandParserInputData, String> {
+        let command_and_data_list: Vec<&str> =
+            data.split_terminator(&self.protocol.separator).collect();
         if command_and_data_list.len() != 1 && command_and_data_list.len() != 2 {
             tracing::info!(
-                "command_and_data_list is {}, {:?}",
-                command_and_data_list.len(),
-                command_and_data_list
-            );
-            println!(
                 "command_and_data_list is {}, {:?}",
                 command_and_data_list.len(),
                 command_and_data_list
@@ -42,7 +49,6 @@ impl CommandParserInputData {
 
         if WRITE_COMMANDS.iter().any(|&rc| rc == command) {
             if command_and_data_list.len() != 2 {
-                tracing::info!("command_and_data_list is {}", command_and_data_list.len());
                 tracing::info!("command_and_data_list is {:?}", command_and_data_list);
                 return Err(String::from(format!(
                     "Wrong number of arguments for {command}"
@@ -110,24 +116,30 @@ impl CommandParserInputData {
 mod tests {
     use super::*;
 
+    fn create_builder() -> CommandParserInputDataBuilder {
+        CommandParserInputDataBuilder::new(Protocol {
+            separator: String::from("--"),
+        })
+    }
+
     #[test]
     fn wrong_command() {
         let data = String::from("wrong command");
-        let result = CommandParserInputData::from_string(data);
+        let result = create_builder().build(data);
         assert!(result.is_err());
     }
 
     #[test]
     fn wrong_command_when_sending_empty_data() {
         let data = String::from("");
-        let result = CommandParserInputData::from_string(data);
+        let result = create_builder().build(data);
         assert!(result.is_err());
     }
 
     #[test]
     fn should_parse_get_command() {
-        let data = String::from("get test\r\n");
-        let result = CommandParserInputData::from_string(data);
+        let data = String::from("get test--");
+        let result = create_builder().build(data);
         assert!(result.is_ok());
         let obj = result.unwrap();
         assert_eq!(obj.command, "get");
@@ -136,22 +148,22 @@ mod tests {
 
     #[test]
     fn should_raise_wrong_arguments_for_get_command_due_to_missing_arg() {
-        let data = String::from("get\r\n");
-        let result = CommandParserInputData::from_string(data);
+        let data = String::from("get--");
+        let result = create_builder().build(data);
         assert!(result.is_err());
     }
 
     #[test]
     fn should_raise_wrong_arguments_for_get_command_due_to_more_args_than_expected() {
-        let data = String::from("get test lala\r\n");
-        let result = CommandParserInputData::from_string(data);
+        let data = String::from("get test lala--");
+        let result = create_builder().build(data);
         assert!(result.is_err());
     }
 
     #[test]
     fn should_parse_set_command_with_reply() {
-        let data = String::from("set test 0 100 4\r\nhola\r\n");
-        let result = CommandParserInputData::from_string(data);
+        let data = String::from("set test 0 100 4--hola--");
+        let result = create_builder().build(data);
         assert!(result.is_ok());
         let obj = result.unwrap();
         assert_eq!(obj.command, "set");
@@ -165,8 +177,8 @@ mod tests {
 
     #[test]
     fn should_parse_set_command_with_no_reply() {
-        let data = String::from("set test 0 100 4 no_reply\r\nhola\r\n");
-        let result = CommandParserInputData::from_string(data);
+        let data = String::from("set test 0 100 4 no_reply--hola--");
+        let result = create_builder().build(data);
         assert!(result.is_ok());
         let obj = result.unwrap();
         assert_eq!(obj.command, "set");
@@ -180,15 +192,15 @@ mod tests {
 
     #[test]
     fn should_raise_error_when_set_command_missing_argument() {
-        let data = String::from("set test 0 100 \r\nhola\r\n");
-        let result = CommandParserInputData::from_string(data);
+        let data = String::from("set test 0 100 --hola--");
+        let result = create_builder().build(data);
         assert!(result.is_err());
     }
 
     #[test]
     fn should_raise_error_when_data_passed_to_set_command_is_different_size_than_expected() {
-        let data = String::from("set test 0 100 4\r\nhello\r\n");
-        let result = CommandParserInputData::from_string(data);
+        let data = String::from("set test 0 100 4--hello--");
+        let result = create_builder().build(data);
         assert!(result.is_err());
     }
 }

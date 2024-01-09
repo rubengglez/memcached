@@ -6,7 +6,6 @@ mod protocol_parser;
 mod types;
 
 use bytes::BytesMut;
-use protocol_parser::CommandParserInputData;
 use std::{
     collections::HashMap,
     net::SocketAddr,
@@ -19,7 +18,7 @@ use commands::CommandDto;
 use tracing_subscriber;
 use types::Store;
 
-use crate::{commands::Commands, config::MyConfig};
+use crate::{commands::Commands, config::MyConfig, protocol_parser::CommandParserInputDataBuilder};
 
 #[tokio::main]
 async fn main() {
@@ -31,6 +30,8 @@ async fn main() {
         Ok(c) => c,
         Err(err) => panic!("Invalid arguments {:?}", err),
     };
+    let input_builder = Arc::new(CommandParserInputDataBuilder::new(config.protocol));
+    let store = Arc::new(Mutex::new(HashMap::new()));
 
     let listener = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], config.port)))
         .await
@@ -38,15 +39,14 @@ async fn main() {
 
     tracing::info!("Listening on port {}", config.port);
 
-    let store = Arc::new(Mutex::new(HashMap::new()));
-
     loop {
         // The second item contains the IP and port of the new connection.
         let (mut socket, _) = listener.accept().await.unwrap();
         let store = store.clone();
+        let builder = input_builder.clone();
 
         tokio::spawn(async move {
-            handle_connection(&mut socket, store).await;
+            handle_connection(&mut socket, store, builder).await;
         });
     }
 }
@@ -64,14 +64,18 @@ async fn response(writer: &mut TcpStream, response: &str) {
     writer.flush().await.unwrap();
 }
 
-async fn handle_connection(stream: &mut TcpStream, store: Store) {
+async fn handle_connection(
+    stream: &mut TcpStream,
+    store: Store,
+    builder: Arc<CommandParserInputDataBuilder>,
+) {
     let mut commands = Commands::new(store);
     loop {
         let mut buf = BytesMut::with_capacity(1024);
         stream.read_buf(&mut buf).await.unwrap();
         let command = String::from_utf8(buf.to_vec()).unwrap();
 
-        let input_data = CommandParserInputData::from_string(command);
+        let input_data = builder.build(command);
         if input_data.is_err() {
             // TODO: deal with different errors and return different messages
             tracing::warn!("Wrong command");
