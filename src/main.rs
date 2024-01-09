@@ -6,9 +6,7 @@ mod protocol_parser;
 mod types;
 
 use bytes::BytesMut;
-use protocol_parser::CommandParserInputData;
 use std::{
-    borrow::Borrow,
     collections::HashMap,
     net::SocketAddr,
     sync::{Arc, Mutex},
@@ -32,7 +30,8 @@ async fn main() {
         Ok(c) => c,
         Err(err) => panic!("Invalid arguments {:?}", err),
     };
-    let inputBuilder = Arc::new(CommandParserInputDataBuilder::new(config.protocol));
+    let input_builder = Arc::new(CommandParserInputDataBuilder::new(config.protocol));
+    let store = Arc::new(Mutex::new(HashMap::new()));
 
     let listener = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], config.port)))
         .await
@@ -40,13 +39,11 @@ async fn main() {
 
     tracing::info!("Listening on port {}", config.port);
 
-    let store = Arc::new(Mutex::new(HashMap::new()));
-
     loop {
         // The second item contains the IP and port of the new connection.
         let (mut socket, _) = listener.accept().await.unwrap();
         let store = store.clone();
-        let builder = inputBuilder.clone();
+        let builder = input_builder.clone();
 
         tokio::spawn(async move {
             handle_connection(&mut socket, store, builder).await;
