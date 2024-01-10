@@ -42,6 +42,7 @@ async fn main() {
     loop {
         // The second item contains the IP and port of the new connection.
         let (mut socket, _) = listener.accept().await.unwrap();
+        tracing::info!("new connection established");
         let store = store.clone();
         let builder = input_builder.clone();
 

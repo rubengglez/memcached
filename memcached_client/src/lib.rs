@@ -1,27 +1,31 @@
-use std::{error::Error};
-use tokio::net::{TcpStream};
+use std::error::Error;
 use tokio::io::AsyncWriteExt;
+use tokio::net::{TcpStream, ToSocketAddrs};
 
 #[derive(Debug)]
 pub struct Client {
-    endpoint: String,
-    // endpoint: SocketAddr,
+    stream: TcpStream,
 }
 
 impl Client {
-    pub async fn connect() -> Result<Client, Box<dyn Error>> {
+    pub async fn connect<A: ToSocketAddrs>(addr: A) -> Result<Client, Box<dyn Error>> {
         // Connect to a peer
-       let mut stream = TcpStream::connect("0.0.0.0:1234").await?;
+        let stream = TcpStream::connect(addr).await?;
 
-        // Write some data.
-        stream.write_all(b"hello world!").await?;
-
-        Ok(Client {
-            endpoint: "a".to_owned(),
-        })
+        Ok(Client { stream })
     }
 
-    pub fn lolo() -> usize {
-        return 5;
+    pub async fn set(
+        &mut self,
+        key: &str,
+        value: &str,
+        exptime: usize,
+    ) -> Result<&Client, Box<dyn Error>> {
+        self.stream
+            .write_all(format!("set {} 0 {} {}--{}--", key, exptime, value.len(), value).as_bytes())
+            .await?;
+
+
+        Ok(self)
     }
 }

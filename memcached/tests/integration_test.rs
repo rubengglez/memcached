@@ -1,13 +1,15 @@
-use memcached_client;
-use std::{borrow::Borrow, error::Error};
+use std::time::Duration;
 
-#[test]
-fn it_adds_two() {
-    assert_eq!(5, memcached_client::Client::lolo());
-}
+use memcached_client;
+use tokio::time::sleep;
 
 #[tokio::test]
 async fn it_should_reach_server() {
-    let client = memcached_client::Client::connect().await;
-    assert!(client.is_ok());
+    let mut client = memcached_client::Client::connect("127.0.0.1:1024")
+        .await
+        .unwrap();
+
+    let _ = client.set("test", "hola", 100).await;
+
+    sleep(Duration::from_millis(10000)).await;
 }
