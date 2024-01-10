@@ -1,2 +1,2 @@
 [workspace]
-members = ["memcached", "memcached-client"]
+members = ["memcached", "memcached_client"]

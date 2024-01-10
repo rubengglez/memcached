@@ -329,6 +329,7 @@ dependencies = [
  "bytes",
  "chrono",
  "config",
+ "memcached_client",
  "serde",
  "serde_json",
  "tokio",
@@ -337,8 +338,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "memcached-client"
+name = "memcached_client"
 version = "0.1.0"
+dependencies = [
+ "tokio",
+]
 
 [[package]]
 name = "memchr"
