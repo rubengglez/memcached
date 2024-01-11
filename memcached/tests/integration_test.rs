@@ -1,7 +1,4 @@
-use std::time::Duration;
-
 use memcached_client;
-use tokio::time::sleep;
 
 #[tokio::test]
 async fn it_should_reach_server() {
@@ -9,7 +6,10 @@ async fn it_should_reach_server() {
         .await
         .unwrap();
 
-    let _ = client.set("test", "hola", 100).await;
+    let _ = client
+        .set("test".to_string(), "hola".to_string(), 100)
+        .await;
 
-    sleep(Duration::from_millis(10000)).await;
+    let data = client.get("test".to_string()).await.unwrap();
+    assert_eq!(data, "hola");
 }

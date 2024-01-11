@@ -1,2 +1,2 @@
 integration-tests:
-	cargo test --test '*'
+	cargo test --test '*' -- --nocapture

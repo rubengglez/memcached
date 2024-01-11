@@ -73,6 +73,7 @@ async fn handle_connection(
     let mut commands = Commands::new(store);
     loop {
         let mut buf = BytesMut::with_capacity(1024);
+        // TODO: split stream into reader and writer
         stream.read_buf(&mut buf).await.unwrap();
         let command = String::from_utf8(buf.to_vec()).unwrap();
 

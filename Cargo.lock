@@ -341,6 +341,7 @@ dependencies = [
 name = "memcached_client"
 version = "0.1.0"
 dependencies = [
+ "bytes",
  "tokio",
 ]
 
