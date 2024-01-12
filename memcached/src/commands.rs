@@ -42,7 +42,7 @@ impl Commands {
                 }
                 let mut message = format!("VALUE {} {} {}\r\n", key, item.flags, item.value_length);
                 message += &item.value;
-                message += "END\r\n";
+                message += "\r\nEND\r\n";
 
                 String::from(message)
             }

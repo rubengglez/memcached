@@ -1,6 +1,9 @@
+mod protocol_parser;
+
+use crate::protocol_parser::*;
+use bytes::BytesMut;
 use std::error::Error;
 use std::sync::Arc;
-use bytes::BytesMut;
 use tokio::io::{self, AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::net::{TcpStream, ToSocketAddrs};
 use tokio::sync::Mutex;
@@ -29,7 +32,6 @@ impl Client {
         value: String,
         exptime: usize,
     ) -> Result<&Client, Box<dyn Error>> {
-        println!("inicio");
         let wr = self.wr.clone();
 
         tokio::spawn(async move {
@@ -54,18 +56,13 @@ impl Client {
         Ok(self)
     }
 
-    pub async fn get(
-        &mut self,
-        key: String
-    ) -> Result<String, Box<dyn Error>> {
+    pub async fn get(&mut self, key: String) -> Result<String, Box<dyn Error>> {
         let wr = self.wr.clone();
 
         tokio::spawn(async move {
             wr.lock()
                 .await
-                .write_all(
-                    format!("get {}", key).as_bytes(),
-                )
+                .write_all(format!("get {}", key).as_bytes())
                 .await?;
 
             // Sometimes, the rust type inferencer needs
@@ -81,6 +78,6 @@ impl Client {
 
         println!("GOT {:?}", data);
 
-        Ok(data)
+        parse_response(data)
     }
 }
