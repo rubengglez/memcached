@@ -66,7 +66,23 @@ impl Commands {
 
                 String::from("STORED\r\n")
             }
-            Some(_) => String::from("NOT_STORED\r\n"),
+            Some(item) => {
+                if item.expired() {
+                    unlocked_store.insert(
+                        data.key,
+                        Item::new(
+                            data.flags,
+                            data.exptime,
+                            data.value_size_in_bytes,
+                            data.value,
+                        ),
+                    );
+
+                    String::from("STORED\r\n")
+                } else {
+                    String::from("NOT_STORED\r\n")
+                }
+            }
         }
     }
 
