@@ -2,6 +2,6 @@ use memcached::Server;
 
 #[tokio::main]
 async fn main() {
-    let server = Server::new();
-    server.run().await;
+    let mut server = Server::new();
+    server.run(1024).await;
 }
