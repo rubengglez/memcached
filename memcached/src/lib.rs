@@ -59,28 +59,29 @@ impl Server {
     }
 }
 
-async fn response(writer: &mut TcpStream, response: &str) {
+async fn response(writer: &mut WriteHalf<TcpStream>, response: &str) {
     writer.write_all(response.as_bytes()).await.unwrap();
     writer.flush().await.unwrap();
 }
 
 async fn handle_connection(
-    stream: &mut TcpStream,
+    stream: TcpStream,
     store: Store,
     builder: Arc<CommandParserInputDataBuilder>,
 ) {
     let mut commands = Commands::new(store);
+    let (mut rd, mut wr) = io::split(stream);
     loop {
         let mut buf = BytesMut::with_capacity(1024);
-        // TODO: split stream into reader and writer
-        stream.read_buf(&mut buf).await.unwrap();
+        rd.read_buf(&mut buf).await.unwrap();
         let command = String::from_utf8(buf.to_vec()).unwrap();
 
         let input_data = builder.build(command);
         if input_data.is_err() {
             // TODO: deal with different errors and return different messages
-            tracing::warn!("Wrong command");
-            response(stream, "wrong command").await;
+            let test = input_data.err();
+            tracing::warn!(target: "Wrong command", warning = "Wrong command", "~~~ {:?}",  test);
+            response(&mut wr, "wrong command").await;
             continue;
         }
         let input_data = input_data.unwrap();
@@ -95,12 +96,12 @@ async fn handle_connection(
             tracing::info!("set result: {:?}", result);
 
             if input_data.no_reply == Some(false) {
-                response(stream, &result).await;
+                response(&mut wr, &result).await;
             }
         } else if input_data.command == "get" {
             let result = commands.get(input_data.key.as_str());
             tracing::info!("get result: {:?}", result);
-            response(stream, &result).await;
+            response(&mut wr, &result).await;
         } else if input_data.command == "add" {
             let result = commands.add(CommandDto {
                 key: input_data.key,
@@ -111,7 +112,7 @@ async fn handle_connection(
             });
             tracing::info!("add result: {:?}", result);
             if input_data.no_reply == Some(false) {
-                response(stream, &result).await;
+                response(&mut wr, &result).await;
             }
         } else if input_data.command == "replace" {
             let result = commands.replace(CommandDto {
@@ -123,7 +124,7 @@ async fn handle_connection(
             });
             tracing::info!("replace result: {:?}", result);
             if input_data.no_reply == Some(false) {
-                response(stream, &result).await;
+                response(&mut wr, &result).await;
             }
         } else if input_data.command == "append" {
             let result = commands.append(CommandDto {
@@ -135,7 +136,7 @@ async fn handle_connection(
             });
             tracing::info!("append result: {:?}", result);
             if input_data.no_reply == Some(false) {
-                response(stream, &result).await;
+                response(&mut wr, &result).await;
             }
         } else if input_data.command == "prepend" {
             let result = commands.prepend(CommandDto {
@@ -147,7 +148,7 @@ async fn handle_connection(
             });
             tracing::info!("prepend result: {:?}", result);
             if input_data.no_reply == Some(false) {
-                response(stream, &result).await;
+                response(&mut wr, &result).await;
             }
         }
     }
