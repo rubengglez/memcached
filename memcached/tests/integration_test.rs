@@ -1,3 +1,4 @@
+use memcached::Server;
 use memcached_client::{self, Client};
 
 async fn clean_data(client: &mut Client) {
@@ -7,8 +8,16 @@ async fn clean_data(client: &mut Client) {
         .unwrap();
 }
 
+async fn run_server() -> Server {
+    let mut server = Server::new();
+    server.run(1024).await;
+    server
+}
+
 #[tokio::test]
 async fn it_should_set_and_retrieve_the_value() {
+    let server = run_server().await;
+
     let mut client = memcached_client::Client::connect("127.0.0.1:1024")
         .await
         .unwrap();
@@ -18,9 +27,11 @@ async fn it_should_set_and_retrieve_the_value() {
         .await;
 
     let data = client.get("test".to_string()).await.unwrap();
-    assert_eq!(data, "hola");
+    assert_eq!(data, "holaoo");
 
     clean_data(&mut client).await;
+
+    server.stop().await;
 }
 
 #[tokio::test]

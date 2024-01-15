@@ -11,51 +11,85 @@ use std::{
     net::SocketAddr,
     sync::{Arc, Mutex},
 };
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::{TcpListener, TcpStream};
+use tokio::{
+    io::{self, AsyncReadExt, AsyncWriteExt, WriteHalf},
+    sync::mpsc::{self, Sender},
+};
+use tokio::{
+    net::{TcpListener, TcpStream},
+    sync::mpsc::Receiver,
+};
 
 use commands::CommandDto;
 use tracing_subscriber;
 use types::Store;
 
-use crate::{commands::Commands, config::MyConfig, protocol_parser::CommandParserInputDataBuilder};
+use crate::{commands::Commands, config::{MyConfig, Protocol}, protocol_parser::CommandParserInputDataBuilder};
 
-pub struct Server {}
+enum Message {
+    Stop,
+    NewConnection(TcpStream),
+}
+
+pub struct Server {
+    tx: Sender<Message>,
+    rx: Receiver<Message>,
+}
 
 impl Server {
     pub fn new() -> Server {
-        Server {}
+        let (tx, rx): (Sender<Message>, Receiver<Message>) = mpsc::channel(100);
+        Server { tx, rx }
     }
 
-    pub async fn run(&self) {
+    pub async fn run(&mut self, port: u16) {
         tracing_subscriber::fmt()
             .with_writer(std::io::stderr)
             .init();
 
-        let config = match MyConfig::parse(std::env::args(), None) {
+        /* let config = match MyConfig::parse(std::env::args(), None) {
             Ok(c) => c,
             Err(err) => panic!("Invalid arguments {:?}", err),
-        };
-        let input_builder = Arc::new(CommandParserInputDataBuilder::new(config.protocol));
+        }; */
+        let input_builder = Arc::new(CommandParserInputDataBuilder::new(Protocol{ separator: "--".to_string()}));
         let store = Arc::new(Mutex::new(HashMap::new()));
+        let tx2 = self.tx.clone();
 
-        let listener = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], config.port)))
+        let listener = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], port)))
             .await
             .unwrap();
 
-        tracing::info!("Listening on port {}", config.port);
+        tracing::info!("Listening on port {}", 1024);
 
-        loop {
-            // The second item contains the IP and port of the new connection.
-            let (mut socket, _) = listener.accept().await.unwrap();
-            tracing::info!("new connection established");
-            let store = store.clone();
-            let builder = input_builder.clone();
+        let join_handler = tokio::spawn(async move {
+            loop {
+                // The second item contains the IP and port of the new connection.
+                let (socket, _) = listener.accept().await.unwrap();
+                tracing::info!("new connection established");
 
-            tokio::spawn(async move {
-                handle_connection(&mut socket, store, builder).await;
-            });
+                tx2.send(Message::NewConnection(socket)).await.unwrap();
+            }
+        });
+
+        while let Some(msg) = self.rx.recv().await {
+            match msg {
+                Message::Stop => {
+                    join_handler.abort();
+                }
+                Message::NewConnection(socket) => {
+                    let store = store.clone();
+                    let builder = input_builder.clone();
+                    // TODO: abort this tasks
+                    tokio::spawn(async move {
+                        handle_connection(socket, store, builder).await;
+                    });
+                }
+            }
         }
+    }
+
+    pub async fn stop(&self) {
+        self.tx.send(Message::Stop).await.unwrap();
     }
 }
 
