@@ -44,7 +44,7 @@ impl Commands {
                 message += &item.value;
                 message += "\r\nEND\r\n";
 
-                String::from(message)
+                message
             }
         };
     }
@@ -114,8 +114,8 @@ impl Commands {
             None => String::from("NOT_STORED\r\n"),
             Some(_) => {
                 unlocked_store.entry(data.key).and_modify(|val| {
-                    val.value = String::from(val.value.to_owned() + data.value.trim_end());
-                    val.value_length = val.value.bytes().count();
+                    val.value = val.value.to_owned() + data.value.trim_end();
+                    val.value_length = val.value.len();
                 });
 
                 String::from("STORED\r\n")
@@ -130,8 +130,8 @@ impl Commands {
             None => String::from("NOT_STORED\r\n"),
             Some(_) => {
                 unlocked_store.entry(data.key).and_modify(|val| {
-                    val.value = String::from(data.value.trim_end().to_owned() + &val.value);
-                    val.value_length = val.value.bytes().count();
+                    val.value = data.value.trim_end().to_owned() + &val.value;
+                    val.value_length = val.value.len();
                 });
 
                 String::from("STORED\r\n")

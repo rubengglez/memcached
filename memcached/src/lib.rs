@@ -11,16 +11,24 @@ use std::{
     net::SocketAddr,
     sync::{Arc, Mutex},
 };
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::tcp::WriteHalf,
+};
 
 use commands::CommandDto;
-use tracing_subscriber;
 use types::Store;
 
 use crate::{commands::Commands, config::MyConfig, protocol_parser::CommandParserInputDataBuilder};
 
 pub struct Server {}
+
+impl Default for Server {
+    fn default() -> Self {
+        Server::new()
+    }
+}
 
 impl Server {
     pub fn new() -> Server {
@@ -47,30 +55,30 @@ impl Server {
 
         loop {
             // The second item contains the IP and port of the new connection.
-            let (mut socket, _) = listener.accept().await.unwrap();
+            let (socket, _) = listener.accept().await.unwrap();
             tracing::info!("new connection established");
             let store = store.clone();
             let builder = input_builder.clone();
 
             tokio::spawn(async move {
-                handle_connection(&mut socket, store, builder).await;
+                handle_connection(socket, store, builder).await;
             });
         }
     }
 }
 
-async fn response(writer: &mut WriteHalf<TcpStream>, response: &str) {
+async fn response<'a>(writer: &mut WriteHalf<'a>, response: &str) {
     writer.write_all(response.as_bytes()).await.unwrap();
     writer.flush().await.unwrap();
 }
 
 async fn handle_connection(
-    stream: TcpStream,
+    mut stream: TcpStream,
     store: Store,
     builder: Arc<CommandParserInputDataBuilder>,
 ) {
     let mut commands = Commands::new(store);
-    let (mut rd, mut wr) = io::split(stream);
+    let (mut rd, mut wr) = stream.split();
     loop {
         let mut buf = BytesMut::with_capacity(1024);
         rd.read_buf(&mut buf).await.unwrap();

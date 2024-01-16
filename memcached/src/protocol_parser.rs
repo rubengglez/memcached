@@ -31,9 +31,7 @@ impl CommandParserInputDataBuilder {
                 command_and_data_list.len(),
                 command_and_data_list
             );
-            return Err(String::from(format!(
-                "Wrong number of arguments for {data}"
-            )));
+            return Err(format!("Wrong number of arguments for {data}"));
         }
         let mut command_data = command_and_data_list[0].split_whitespace();
         let size = command_data.clone().count();
@@ -41,25 +39,19 @@ impl CommandParserInputDataBuilder {
         let key = command_data.next();
         if key.is_none() {
             tracing::info!("key is none");
-            return Err(String::from(format!(
-                "Wrong number of arguments for {command}"
-            )));
+            return Err(format!("Wrong number of arguments for {command}"));
         }
         let key = key.unwrap();
 
         if WRITE_COMMANDS.iter().any(|&rc| rc == command) {
             if command_and_data_list.len() != 2 {
                 tracing::info!("command_and_data_list is {:?}", command_and_data_list);
-                return Err(String::from(format!(
-                    "Wrong number of arguments for {command}"
-                )));
+                return Err(format!("Wrong number of arguments for {command}"));
             }
 
             if size != 5 && size != 6 {
                 tracing::info!("size is {}", size);
-                return Err(String::from(format!(
-                    "Wrong number of arguments for {command}"
-                )));
+                return Err(format!("Wrong number of arguments for {command}"));
             }
 
             let flags: u16 = command_data.next().unwrap().parse().unwrap();
@@ -68,11 +60,9 @@ impl CommandParserInputDataBuilder {
             let no_reply = command_data.next();
             let value = command_and_data_list[1];
 
-            if value.bytes().count() != value_size_in_bytes {
+            if value.len() != value_size_in_bytes {
                 tracing::info!("value not matched expected");
-                return Err(String::from(format!(
-                    "Value in bytes does not match expected"
-                )));
+                return Err("Value in bytes does not match expected".to_string());
             }
 
             Ok(CommandParserInputData {
@@ -86,14 +76,10 @@ impl CommandParserInputDataBuilder {
             })
         } else if READ_COMMANDS.iter().any(|&rc| rc == command) {
             if command_and_data_list.len() != 1 {
-                return Err(String::from(format!(
-                    "Wrong number of arguments for {command}"
-                )));
+                return Err(format!("Wrong number of arguments for {command}"));
             }
             if size != 2 {
-                return Err(String::from(format!(
-                    "Wrong number of arguments for {command}"
-                )));
+                return Err(format!("Wrong number of arguments for {command}"));
             }
 
             Ok(CommandParserInputData {
