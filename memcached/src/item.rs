@@ -4,7 +4,7 @@ use std::{
     time::Duration,
 };
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Item {
     pub flags: u16,
     exptime: i64,
