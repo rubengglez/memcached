@@ -4,6 +4,7 @@ mod errors;
 mod item;
 mod protocol_parser;
 mod types;
+mod store_manager;
 
 use bytes::BytesMut;
 use std::{

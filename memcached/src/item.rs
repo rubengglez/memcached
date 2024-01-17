@@ -36,3 +36,34 @@ impl Item {
         self.exptime < now
     }
 }
+
+pub mod tests {
+    use super::Item;
+
+    pub struct ItemBuilder {
+        flags: u16,
+        exptime: i64,
+        value: String,
+        value_length: usize,
+    }
+
+    impl ItemBuilder {
+        pub fn new() -> ItemBuilder {
+            ItemBuilder {
+                flags: 0,
+                exptime: 100,
+                value: String::from("myValue"),
+                value_length: 7,
+            }
+        }
+
+        pub fn build(&self) -> Item {
+            Item {
+                flags: self.flags,
+                exptime: self.exptime,
+                value: self.value.to_owned(),
+                value_length: self.value_length,
+            }
+        }
+    }
+}
