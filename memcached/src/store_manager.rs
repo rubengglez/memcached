@@ -2,6 +2,41 @@ use std::collections::HashMap;
 
 use crate::{item::Item, types::MAX_ALLOWED_ITEMS};
 
+struct Node<'a> {
+    prev: Option<&'a Node<'a>>,
+    next: Option<&'a Node<'a>>,
+    value: String,
+}
+
+impl<'a> Node<'a> {
+    fn new(value: String, prev: Option<&'a Node<'a>>, next: Option<&'a Node<'a>>) -> Node<'a> {
+        Node { value, prev, next }
+    }
+
+    fn addPrev(&mut self, prev: Option<&'a Node<'a>>) {
+        self.prev = prev;
+    }
+
+    fn addNext(&mut self, next: Option<&'a Node<'a>>) {
+        self.next = next;
+    }
+}
+
+#[cfg(test)]
+mod list_tests {
+    use super::*;
+
+    #[test]
+    fn should_create_a_list() {
+        let mut node = Node::new("value".to_string(), None, None);
+        let mut node2 = Node::new("value2".to_string(), None, None);
+        {
+            node.addNext(Some(&node2));
+        }
+        node2.addPrev(Some(&node));
+    }
+}
+
 #[derive(Debug)]
 pub struct StoreManager {
     store: HashMap<String, Item>,
@@ -29,8 +64,6 @@ impl StoreManager {
             self.store.insert(key, value);
             return;
         }
-
-        // 1.1.1.2 If not, then LRU algorithm to find the key-value pair to remove
     }
 
     pub fn get(&self, key: String) -> Option<&Item> {
@@ -127,7 +160,6 @@ mod tests {
         assert!(st_manager.get(key.clone()).is_some());
         assert!(st_manager.get(key4.clone()).is_some());
 
-
         let key5 = "key5".to_owned();
         let item5 = ItemBuilder::new().build();
 
@@ -161,6 +193,5 @@ mod tests {
         assert!(st_manager.get(key5.clone()).is_some());
         assert!(st_manager.get(key.clone()).is_some());
         assert!(st_manager.get(key7.clone()).is_some());
-
     }
 }
