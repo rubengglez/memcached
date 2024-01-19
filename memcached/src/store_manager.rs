@@ -1,39 +1,73 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, rc::Rc, cell::RefCell};
 
 use crate::{item::Item, types::MAX_ALLOWED_ITEMS};
 
-struct Node<'a> {
-    prev: Option<&'a Node<'a>>,
-    next: Option<&'a Node<'a>>,
+struct Node {
+    prev: Option<Rc<RefCell<Node>>>,
+    next: Option<Rc<RefCell<Node>>>,
     value: String,
 }
 
-impl<'a> Node<'a> {
-    fn new(value: String, prev: Option<&'a Node<'a>>, next: Option<&'a Node<'a>>) -> Node<'a> {
+impl Node {
+    fn new(value: String, prev: Option<Rc<RefCell<Node>>>, next: Option<Rc<RefCell<Node>>>) -> Node {
         Node { value, prev, next }
     }
 
-    fn addPrev(&mut self, prev: Option<&'a Node<'a>>) {
+    fn add_prev(&mut self, prev: Option<Rc<RefCell<Node>>>) {
         self.prev = prev;
     }
 
-    fn addNext(&mut self, next: Option<&'a Node<'a>>) {
+    fn add_next(&mut self, next: Option<Rc<RefCell<Node>>>) {
         self.next = next;
+    }
+
+}
+
+struct List {
+    first_node: Option<Rc<RefCell<Node>>>,
+    last_node: Option<Rc<RefCell<Node>>>,
+}
+
+impl List {
+    fn insert_at_the_end(&mut self, node: Option<Rc<RefCell<Node>>>) -> &Self {
+        if self.last_node.is_none() {
+            self.last_node = node;
+        } else {
+            node.unwrap().borrow_mut().add_prev(Some(Rc::clone(&self.last_node.clone().unwrap())));
+            self.last_node = node;
+        }
+
+        self
+    }
+
+    fn insert_at_the_beginning(&mut self, node: Option<Rc<RefCell<Node>>>) -> &Self {
+        self
+    }
+}
+
+impl Default for List {
+    fn default() -> Self {
+        List {
+            first_node: None,
+            last_node: None,
+        }
     }
 }
 
 #[cfg(test)]
 mod list_tests {
+
     use super::*;
 
     #[test]
     fn should_create_a_list() {
-        let mut node = Node::new("value".to_string(), None, None);
-        let mut node2 = Node::new("value2".to_string(), None, None);
-        {
-            node.addNext(Some(&node2));
-        }
-        node2.addPrev(Some(&node));
+        let node = Rc::new(RefCell::new(Node::new("value".to_string(), None, None)));
+        let node2 = Rc::new(RefCell::new(Node::new("value2".to_string(), None, None)));
+
+        /* let mut reference = data.borrow_mut();
+         *reference = false; */
+        node.borrow_mut().add_next(Some(Rc::clone(&node2)));
+        node2.borrow_mut().add_prev(Some(Rc::clone(&node)));
     }
 }
 
