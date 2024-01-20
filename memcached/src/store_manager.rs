@@ -33,7 +33,7 @@ impl List {
         if self.last_node.is_none() {
             self.last_node = node;
         } else {
-            node.unwrap().borrow_mut().add_prev(Some(Rc::clone(&self.last_node.clone().unwrap())));
+            node.clone().unwrap().borrow_mut().add_prev(Some(Rc::clone(&self.last_node.clone().unwrap())));
             self.last_node = node;
         }
 

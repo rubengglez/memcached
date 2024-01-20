@@ -10,20 +10,35 @@ use tokio::sync::Mutex;
 
 #[derive(Debug)]
 pub struct Client {
+    connections: Vec<Connection>,
+}
+
+#[derive(Debug)]
+struct Connection {
     rd: Arc<Mutex<ReadHalf<TcpStream>>>,
     wr: Arc<Mutex<WriteHalf<TcpStream>>>,
 }
 
 impl Client {
-    pub async fn connect<A: ToSocketAddrs>(addr: A) -> Result<Client, Box<dyn Error>> {
+    async fn create_connection<A: ToSocketAddrs>(addr: A) -> Result<Connection, Box<dyn Error>> {
         let stream = TcpStream::connect(addr).await?;
 
         let (rd, wr) = io::split(stream);
 
-        Ok(Client {
+        Ok(Connection {
             rd: Arc::new(Mutex::new(rd)),
             wr: Arc::new(Mutex::new(wr)),
         })
+    }
+
+    pub async fn connect<A: ToSocketAddrs>(addresses: Vec<A>) -> Result<Client, Box<dyn Error>> {
+        let mut connections: Vec<Connection> = vec![];
+        for address in addresses {
+            let conn = Client::create_connection(address).await?;
+            connections.push(conn);
+        }
+
+        Ok(Client { connections })
     }
 
     pub async fn set(
@@ -32,7 +47,7 @@ impl Client {
         value: String,
         exptime: isize,
     ) -> Result<&Client, Box<dyn Error>> {
-        let wr = self.wr.clone();
+        let wr = self.connections.first().unwrap().wr.clone();
 
         tokio::spawn(async move {
             wr.lock()
@@ -49,7 +64,7 @@ impl Client {
 
         let mut buf = BytesMut::with_capacity(1024);
 
-        self.rd.lock().await.read_buf(&mut buf).await?;
+        self.connections.first().unwrap().rd.lock().await.read_buf(&mut buf).await?;
 
         println!("GOT {:?}", String::from_utf8(buf.to_vec()));
 
@@ -57,7 +72,7 @@ impl Client {
     }
 
     pub async fn get(&mut self, key: String) -> Result<String, Box<dyn Error>> {
-        let wr = self.wr.clone();
+        let wr = self.connections.first().unwrap().wr.clone();
 
         tokio::spawn(async move {
             wr.lock()
@@ -72,7 +87,7 @@ impl Client {
 
         let mut buf = BytesMut::with_capacity(1024);
 
-        self.rd.lock().await.read_buf(&mut buf).await?;
+        self.connections.first().unwrap().rd.lock().await.read_buf(&mut buf).await?;
 
         let data = String::from_utf8(buf.to_vec()).unwrap();
 
@@ -88,7 +103,7 @@ impl Client {
         value: String,
         exptime: isize,
     ) -> Result<bool, Box<dyn Error>> {
-        let wr = self.wr.clone();
+        let wr = self.connections.first().unwrap().wr.clone();
 
         tokio::spawn(async move {
             wr.lock()
@@ -105,7 +120,7 @@ impl Client {
 
         let mut buf = BytesMut::with_capacity(1024);
 
-        self.rd.lock().await.read_buf(&mut buf).await?;
+        self.connections.first().unwrap().rd.lock().await.read_buf(&mut buf).await?;
 
         let response = String::from_utf8(buf.to_vec());
 

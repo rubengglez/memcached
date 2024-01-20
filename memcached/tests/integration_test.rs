@@ -9,7 +9,7 @@ async fn clean_data(client: &mut Client) {
 
 #[tokio::test]
 async fn it_should_set_and_retrieve_the_value() {
-    let mut client = memcached_client::Client::connect("127.0.0.1:1024")
+    let mut client = memcached_client::Client::connect(vec!["127.0.0.1:1024"])
         .await
         .unwrap();
 
@@ -25,7 +25,7 @@ async fn it_should_set_and_retrieve_the_value() {
 
 #[tokio::test]
 async fn it_should_add_and_retrieve_the_value() {
-    let mut client = memcached_client::Client::connect("127.0.0.1:1024")
+    let mut client = memcached_client::Client::connect(vec!["127.0.0.1:1024"])
         .await
         .unwrap();
 
