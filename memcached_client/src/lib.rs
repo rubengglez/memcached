@@ -2,19 +2,35 @@ mod protocol_parser;
 
 use crate::protocol_parser::*;
 use bytes::BytesMut;
+use std::collections::HashMap;
+use std::collections::hash_map::DefaultHasher;
 use std::error::Error;
 use std::sync::Arc;
+use std::hash::{Hash, Hasher};
 use tokio::io::{self, AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::net::{TcpStream, ToSocketAddrs};
 use tokio::sync::Mutex;
+use ulid::Ulid;
+
+
+type ConnectionId = String;
+type HashId = String;
+
+fn calculate_hash<T: Hash>(t: &T) -> u64 {
+    let mut s = DefaultHasher::new();
+    t.hash(&mut s);
+    s.finish()
+}
 
 #[derive(Debug)]
 pub struct Client {
-    connections: Vec<Connection>,
+    connections: HashMap<ConnectionId, Connection>,
+    ring: HashMap<HashId, ConnectionId>,
 }
 
 #[derive(Debug)]
 struct Connection {
+    id: ConnectionId,
     rd: Arc<Mutex<ReadHalf<TcpStream>>>,
     wr: Arc<Mutex<WriteHalf<TcpStream>>>,
 }
@@ -26,6 +42,7 @@ impl Client {
         let (rd, wr) = io::split(stream);
 
         Ok(Connection {
+            id: Ulid::new().to_string(),
             rd: Arc::new(Mutex::new(rd)),
             wr: Arc::new(Mutex::new(wr)),
         })
