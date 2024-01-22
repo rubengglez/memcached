@@ -2,21 +2,19 @@ mod protocol_parser;
 
 use crate::protocol_parser::*;
 use bytes::BytesMut;
-use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use std::error::Error;
-use std::sync::Arc;
 use std::hash::{Hash, Hasher};
+use std::sync::Arc;
 use tokio::io::{self, AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::net::{TcpStream, ToSocketAddrs};
 use tokio::sync::Mutex;
-use ulid::Ulid;
 
+type HashId = u64;
+type MutexWriteHalfTcpStream = Arc<Mutex<WriteHalf<TcpStream>>>;
+type MutexReadHalfTcpStream = Arc<Mutex<ReadHalf<TcpStream>>>;
 
-type ConnectionId = String;
-type HashId = String;
-
-fn calculate_hash<T: Hash>(t: &T) -> u64 {
+fn calculate_hash<T: Hash>(t: &T) -> HashId {
     let mut s = DefaultHasher::new();
     t.hash(&mut s);
     s.finish()
@@ -24,32 +22,18 @@ fn calculate_hash<T: Hash>(t: &T) -> u64 {
 
 #[derive(Debug)]
 pub struct Client {
-    connections: HashMap<ConnectionId, Connection>,
-    ring: HashMap<HashId, ConnectionId>,
+    connections: Vec<Connection>,
 }
 
 #[derive(Debug)]
 struct Connection {
-    id: ConnectionId,
-    rd: Arc<Mutex<ReadHalf<TcpStream>>>,
-    wr: Arc<Mutex<WriteHalf<TcpStream>>>,
+    rd: MutexReadHalfTcpStream,
+    wr: MutexWriteHalfTcpStream,
 }
 
 impl Client {
-    async fn create_connection<A: ToSocketAddrs>(addr: A) -> Result<Connection, Box<dyn Error>> {
-        let stream = TcpStream::connect(addr).await?;
-
-        let (rd, wr) = io::split(stream);
-
-        Ok(Connection {
-            id: Ulid::new().to_string(),
-            rd: Arc::new(Mutex::new(rd)),
-            wr: Arc::new(Mutex::new(wr)),
-        })
-    }
-
     pub async fn connect<A: ToSocketAddrs>(addresses: Vec<A>) -> Result<Client, Box<dyn Error>> {
-        let mut connections: Vec<Connection> = vec![];
+        let mut connections = vec![];
         for address in addresses {
             let conn = Client::create_connection(address).await?;
             connections.push(conn);
@@ -64,7 +48,7 @@ impl Client {
         value: String,
         exptime: isize,
     ) -> Result<&Client, Box<dyn Error>> {
-        let wr = self.connections.first().unwrap().wr.clone();
+        let (wr, rd) = self.get_write_and_read_conn(&key);
 
         tokio::spawn(async move {
             wr.lock()
@@ -81,7 +65,7 @@ impl Client {
 
         let mut buf = BytesMut::with_capacity(1024);
 
-        self.connections.first().unwrap().rd.lock().await.read_buf(&mut buf).await?;
+        rd.lock().await.read_buf(&mut buf).await?;
 
         println!("GOT {:?}", String::from_utf8(buf.to_vec()));
 
@@ -89,7 +73,7 @@ impl Client {
     }
 
     pub async fn get(&mut self, key: String) -> Result<String, Box<dyn Error>> {
-        let wr = self.connections.first().unwrap().wr.clone();
+        let (wr, rd) = self.get_write_and_read_conn(&key);
 
         tokio::spawn(async move {
             wr.lock()
@@ -104,7 +88,7 @@ impl Client {
 
         let mut buf = BytesMut::with_capacity(1024);
 
-        self.connections.first().unwrap().rd.lock().await.read_buf(&mut buf).await?;
+        rd.lock().await.read_buf(&mut buf).await?;
 
         let data = String::from_utf8(buf.to_vec()).unwrap();
 
@@ -120,7 +104,7 @@ impl Client {
         value: String,
         exptime: isize,
     ) -> Result<bool, Box<dyn Error>> {
-        let wr = self.connections.first().unwrap().wr.clone();
+        let (wr, rd) = self.get_write_and_read_conn(&key);
 
         tokio::spawn(async move {
             wr.lock()
@@ -137,7 +121,7 @@ impl Client {
 
         let mut buf = BytesMut::with_capacity(1024);
 
-        self.connections.first().unwrap().rd.lock().await.read_buf(&mut buf).await?;
+        rd.lock().await.read_buf(&mut buf).await?;
 
         let response = String::from_utf8(buf.to_vec());
 
@@ -153,5 +137,33 @@ impl Client {
             }
             Err(err) => Err(err.into()),
         }
+    }
+
+    async fn create_connection<A: ToSocketAddrs>(addr: A) -> Result<Connection, Box<dyn Error>> {
+        let stream = TcpStream::connect(addr).await?;
+
+        let (rd, wr) = io::split(stream);
+
+        Ok(Connection {
+            rd: Arc::new(Mutex::new(rd)),
+            wr: Arc::new(Mutex::new(wr)),
+        })
+    }
+
+    fn select_connection(&self, key: &str) -> &Connection {
+        let hash = calculate_hash(&key.to_string());
+        let index = hash as usize % self.connections.len();
+        return &self.connections[index];
+    }
+
+    fn get_write_and_read_conn(
+        &self,
+        key: &str,
+    ) -> (MutexWriteHalfTcpStream, MutexReadHalfTcpStream) {
+        let connection = self.select_connection(key);
+        let wr = connection.wr.clone();
+        let rd = connection.rd.clone();
+
+        return (wr, rd);
     }
 }

@@ -30,12 +30,12 @@ async fn it_should_add_and_retrieve_the_value() {
         .unwrap();
 
     let stored = client
-        .add("test".to_string(), "hola".to_string(), 100)
+        .add("test2".to_string(), "hola".to_string(), 100)
         .await;
 
     assert!(stored.unwrap());
 
-    let data = client.get("test".to_string()).await.unwrap();
+    let data = client.get("test2".to_string()).await.unwrap();
     assert_eq!(data, "hola");
 
     clean_data(&mut client).await;
