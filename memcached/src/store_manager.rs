@@ -1,26 +1,25 @@
-use std::{collections::HashMap, rc::Rc, cell::RefCell};
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    rc::{Rc, Weak},
+};
 
 use crate::{item::Item, types::MAX_ALLOWED_ITEMS};
 
 struct Node {
-    prev: Option<Rc<RefCell<Node>>>,
+    prev: Option<Weak<RefCell<Node>>>,
     next: Option<Rc<RefCell<Node>>>,
     value: String,
 }
 
 impl Node {
-    fn new(value: String, prev: Option<Rc<RefCell<Node>>>, next: Option<Rc<RefCell<Node>>>) -> Node {
-        Node { value, prev, next }
+    fn new(value: String) -> Node {
+        Node {
+            value,
+            prev: None,
+            next: None,
+        }
     }
-
-    fn add_prev(&mut self, prev: Option<Rc<RefCell<Node>>>) {
-        self.prev = prev;
-    }
-
-    fn add_next(&mut self, next: Option<Rc<RefCell<Node>>>) {
-        self.next = next;
-    }
-
 }
 
 struct List {
@@ -29,18 +28,34 @@ struct List {
 }
 
 impl List {
-    fn insert_at_the_end(&mut self, node: Option<Rc<RefCell<Node>>>) -> &Self {
+    fn insert_at_the_end(&mut self, data: String) -> &Self {
         if self.last_node.is_none() {
-            self.last_node = node;
+            let f = Rc::new(RefCell::new(Node::new(data)));
+            self.first_node = Some(f.clone());
+            self.last_node = Some(f);
         } else {
-            node.clone().unwrap().borrow_mut().add_prev(Some(Rc::clone(&self.last_node.clone().unwrap())));
-            self.last_node = node;
+            let mut new_node = Node::new(data);
+            new_node.prev = Some(Rc::downgrade(&self.last_node.as_ref().unwrap()));
+            let rc = Rc::new(RefCell::new(new_node));
+            self.last_node.as_mut().unwrap().borrow_mut().next = Some(rc);
         }
 
         self
     }
 
-    fn insert_at_the_beginning(&mut self, node: Option<Rc<RefCell<Node>>>) -> &Self {
+    fn insert_at_the_beginning(&mut self, data: String) -> &Self {
+        if self.first_node.is_none() {
+            let f = Rc::new(RefCell::new(Node::new(data)));
+            self.first_node = Some(f.clone());
+            self.last_node = Some(f);
+        } else {
+            let mut new_node = Node::new(data);
+            new_node.next = Some(self.first_node.as_mut().unwrap().clone());
+            let rc = Rc::new(RefCell::new(new_node));
+            self.first_node.as_mut().unwrap().borrow_mut().prev = Some(Rc::downgrade(&rc));
+            self.first_node = Some(rc);
+        }
+
         self
     }
 }
@@ -61,13 +76,9 @@ mod list_tests {
 
     #[test]
     fn should_create_a_list() {
-        let node = Rc::new(RefCell::new(Node::new("value".to_string(), None, None)));
-        let node2 = Rc::new(RefCell::new(Node::new("value2".to_string(), None, None)));
-
-        /* let mut reference = data.borrow_mut();
-         *reference = false; */
-        node.borrow_mut().add_next(Some(Rc::clone(&node2)));
-        node2.borrow_mut().add_prev(Some(Rc::clone(&node)));
+        let mut list = List::default();
+        list.insert_at_the_end("hello".to_string());
+        list.insert_at_the_end("world".to_string());
     }
 }
 
