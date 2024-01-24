@@ -37,7 +37,7 @@ impl List {
             let mut new_node = Node::new(data);
             new_node.prev = Some(Rc::downgrade(&self.last_node.as_ref().unwrap()));
             let rc = Rc::new(RefCell::new(new_node));
-            self.last_node.as_mut().unwrap().borrow_mut().next = Some(rc);
+            self.last_node = Some(rc);
         }
 
         self
@@ -57,6 +57,44 @@ impl List {
         }
 
         self
+    }
+
+    fn last_value(&self) -> Option<String> {
+        if self.last_node.is_none() {
+            return None;
+        }
+
+        Some(self.last_node.clone().unwrap().borrow().value.to_owned())
+    }
+
+    fn first_value(&self) -> Option<String> {
+        if self.first_node.is_none() {
+            return None;
+        }
+
+        Some(self.first_node.clone().unwrap().borrow().value.to_owned())
+    }
+
+    fn find_and_move_first_place(&mut self, value: &str) -> bool {
+        let mut node = self.first_node.clone();
+        if node.is_none() {
+            return false;
+        }
+
+        loop {
+            if node.as_ref().unwrap().borrow().next.is_none() {
+                break;
+            }
+
+            if node.as_ref().unwrap().borrow().value.eq(value) {
+                self.first_node = node;
+                return true;
+            }
+
+            node = node.unwrap().borrow_mut().next.clone();
+        }
+
+        false
     }
 }
 
@@ -78,7 +116,33 @@ mod list_tests {
     fn should_create_a_list() {
         let mut list = List::default();
         list.insert_at_the_end("hello".to_string());
+        list.insert_at_the_end("hello2".to_string());
+        list.insert_at_the_beginning("hello3".to_string());
         list.insert_at_the_end("world".to_string());
+        assert_eq!(list.last_value(), Some("world".to_string()));
+        assert_eq!(list.first_value(), Some("hello3".to_string()));
+    }
+
+    #[test]
+    fn should_create_a_list_inserting_always_at_the_beginning() {
+        let mut list = List::default();
+        list.insert_at_the_beginning("hello".to_string());
+        list.insert_at_the_beginning("hello2".to_string());
+        list.insert_at_the_beginning("hello3".to_string());
+        list.insert_at_the_beginning("world".to_string());
+        assert_eq!(list.first_value(), Some("world".to_string()));
+        assert_eq!(list.last_value(), Some("hello".to_string()));
+    }
+
+    #[test]
+    fn should_mark_and_move_at_first_place_if_exists_in_the_middle() {
+        let mut list = List::default();
+        list.insert_at_the_beginning("hello".to_string());
+        list.insert_at_the_beginning("hello2".to_string());
+        list.insert_at_the_beginning("hello3".to_string());
+        assert!(list.find_and_move_first_place("hello2"));
+        assert_eq!(list.first_value(), Some("hello2".to_string()));
+        assert_eq!(list.last_value(), Some("hello".to_string()));
     }
 }
 
