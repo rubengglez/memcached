@@ -95,6 +95,40 @@ impl List {
         Some(self.first_node.clone().unwrap().borrow().value.to_owned())
     }
 
+    fn find_next_value(&self, value: &str) -> Option<String> {
+        let mut node = self.first_node.clone();
+        if node.is_none() {
+            return None;
+        }
+
+        loop {
+            if node.is_none() {
+                break;
+            }
+
+            if node.as_ref().unwrap().borrow().next.is_none() {
+                return None;
+            }
+
+            if node.as_ref().unwrap().borrow().value.eq(value) {
+                return Some(
+                    node.unwrap()
+                        .borrow()
+                        .next
+                        .clone()
+                        .unwrap()
+                        .borrow()
+                        .value
+                        .to_string(),
+                );
+            }
+
+            node = node.unwrap().borrow().next.clone();
+        }
+
+        None
+    }
+
     pub fn find_and_move_first_place(&mut self, value: &str) -> bool {
         let mut node = self.first_node.clone();
         if node.is_none() {
@@ -107,6 +141,15 @@ impl List {
             }
 
             if node.as_ref().unwrap().borrow().value.eq(value) {
+                /* Node -> firstNode -> 2 -> lastNode -> None
+
+                2.prev.next = 2.next
+                2.prev = None
+                2.next = firstNode
+                firstNode = 2 */
+                let prev = node.as_ref().unwrap().borrow_mut().prev.clone().unwrap().upgrade();
+                prev.clone().unwrap().borrow_mut().next = node.as_ref().unwrap().borrow_mut().next.clone();
+                prev.unwrap().borrow_mut().prev = None;
                 self.first_node = node;
                 return true;
             }
@@ -162,6 +205,8 @@ mod list_tests {
         list.insert_at_the_beginning("hello3");
         assert!(list.find_and_move_first_place("hello2"));
         assert_eq!(list.first_value(), Some("hello2".to_string()));
+        let next_value = list.find_next_value("hello2");
+        assert_eq!(next_value, Some("hello3".to_string()));
         assert_eq!(list.last_value(), Some("hello".to_string()));
     }
 
