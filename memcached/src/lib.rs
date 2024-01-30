@@ -3,8 +3,8 @@ mod config;
 mod errors;
 mod item;
 mod protocol_parser;
-mod types;
 mod store_manager;
+mod types;
 
 use bytes::BytesMut;
 use std::{
@@ -45,7 +45,6 @@ impl Server {
             Ok(c) => c,
             Err(err) => panic!("Invalid arguments {:?}", err),
         };
-        let input_builder = Arc::new(CommandParserInputDataBuilder::new(config.protocol));
         let store = Arc::new(Mutex::new(HashMap::new()));
 
         let listener = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], config.port)))
@@ -55,14 +54,12 @@ impl Server {
         tracing::info!("Listening on port {}", config.port);
 
         loop {
-            // The second item contains the IP and port of the new connection.
             let (socket, _) = listener.accept().await.unwrap();
             tracing::info!("new connection established");
             let store = store.clone();
-            let builder = input_builder.clone();
 
             tokio::spawn(async move {
-                handle_connection(socket, store, builder).await;
+                handle_connection(socket, store).await;
             });
         }
     }
@@ -73,12 +70,14 @@ async fn response<'a>(writer: &mut WriteHalf<'a>, response: &str) {
     writer.flush().await.unwrap();
 }
 
-async fn handle_connection(
-    mut stream: TcpStream,
-    store: Store,
-    builder: Arc<CommandParserInputDataBuilder>,
-) {
+async fn handle_connection(mut stream: TcpStream, store: Store) {
     let mut commands = Commands::new(store);
+    // TODO: refactor this
+    let config = match MyConfig::parse(std::env::args(), None) {
+        Ok(c) => c,
+        Err(err) => panic!("Invalid arguments {:?}", err),
+    };
+    let builder = CommandParserInputDataBuilder::new(config.protocol);
     let (mut rd, mut wr) = stream.split();
     loop {
         let mut buf = BytesMut::with_capacity(1024);
